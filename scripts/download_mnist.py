@@ -5,8 +5,8 @@ from torchvision import datasets
 
 def main():
     path = Path(__file__).parent / "../datasets"
-    train = datasets.FashionMNIST(path, train=True, download=True)
-    valid = datasets.FashionMNIST(path, train=False, download=True)
+    train = datasets.MNIST(path, train=True, download=True)
+    valid = datasets.MNIST(path, train=False, download=True)
     print(f"{len(train)=}, {len(valid)=}")
     print(f"{train[0]=}")
 
