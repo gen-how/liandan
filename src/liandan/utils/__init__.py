@@ -1,3 +1,11 @@
-from ._device import default_device
+import torch
 
-__all__ = ["default_device"]
+
+def get_default_device():
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+
+    return torch.device("cpu")
