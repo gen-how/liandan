@@ -4,20 +4,21 @@ import torch
 from liandan.metrics.classification import Accuracy
 
 
+# fmt: off
 @pytest.mark.parametrize(
     "preds, targets, expected",
     [
-        (torch.tensor([[0.1, 0.9], [0.8, 0.2]]), torch.tensor([1, 0]), 2 / 2),
-        (torch.tensor([[0.9, 0.1], [0.6, 0.4]]), torch.tensor([0, 1]), 1 / 2),
-        (torch.tensor([[0.2, 0.8], [0.4, 0.6]]), torch.tensor([0, 0]), 0 / 2),
-        (torch.empty((0, 2)), torch.empty((0,), dtype=torch.int64), 0.0),
+        pytest.param(torch.tensor([[0.1, 0.9], [0.8, 0.2]]), torch.tensor([1, 0]), 2 / 2, id="accuracy=2/2"),
+        pytest.param(torch.tensor([[0.9, 0.1], [0.6, 0.4]]), torch.tensor([0, 1]), 1 / 2, id="accuracy=1/2"),
+        pytest.param(torch.tensor([[0.2, 0.8], [0.4, 0.6]]), torch.tensor([0, 0]), 0 / 2, id="accuracy=0/2"),
+        pytest.param(torch.empty((0, 2)), torch.empty((0,), dtype=torch.int64), 0.0, id="empty batch"),
     ],
-    ids=["accuracy=2/2", "accuracy=1/2", "accuracy=0/2", "empty batch"],
 )
-def test_accuracy_cases(preds, targets, expected):
+def test_accuracy_parametrize(preds, targets, expected):
     acc = Accuracy()
     acc.update(preds, targets)
     assert acc.compute() == pytest.approx(expected)
+# fmt: on
 
 
 def test_accuracy_update_and_reset():
