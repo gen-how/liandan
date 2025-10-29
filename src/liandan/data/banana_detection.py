@@ -8,22 +8,30 @@ from torchvision.io import decode_image
 
 from liandan.utils.data import calculate_md5, download_file, extract_zip
 
-MIRRORS = [
-    "http://d2l-data.s3-accelerate.amazonaws.com/",
-]
-
-RESOURCES = [
-    ("banana-detection.zip", "191823bdb3e62ff13738cc27fa5ee5dd"),
-]
-
 
 class BananaDetection(Dataset):
+    """香蕉檢測資料集。
+
+    此資料集用於訓練香蕉檢測模型，包含訓練集與驗證集兩個部分。
+    此資料集取自李沐博士的教學系列影片 [41 物体检测和数据集【动手学深度学习v2】](https://www.bilibili.com/video/BV1Lh411Y7LX/?p=3)。
+    """
+
+    MIRRORS = ("http://d2l-data.s3-accelerate.amazonaws.com/",)
+    RESOURCES = (("banana-detection.zip", "191823bdb3e62ff13738cc27fa5ee5dd"),)
+
     def __init__(
         self,
         root: str | Path,
         split: Literal["train", "valid"],
         download=False,
     ):
+        """根據`split`載入不同部分的香蕉檢測資料集。
+
+        Args:
+            root (str | Path): 資料集的根目錄。
+            split (str): 選擇載入哪一部分的資料集，必需是`"train"`或`"valid"`。
+            download (bool, optional): 是否下載並解壓資料集，預設值為`False`。
+        """
         self.root = Path(root).expanduser()
         self.split = split
 
@@ -56,12 +64,12 @@ class BananaDetection(Dataset):
 
     def _download_and_extract(self):
         self.root.mkdir(parents=True, exist_ok=True)
-        for filename, md5 in RESOURCES:
+        for filename, md5 in BananaDetection.RESOURCES:
             filepath = self.root / filename
             # Checks if the resources is already downloaded.
             if not filepath.exists() or calculate_md5(filepath) != md5:
                 # Downloads the resource from mirrors.
-                for mirror in MIRRORS:
+                for mirror in BananaDetection.MIRRORS:
                     url = f"{mirror}{filename}"
                     print(f"Downloading '{url}'...")
                     try:
