@@ -4,17 +4,16 @@ from zipfile import ZipFile
 import requests
 
 
-def download_file(url: str, target_dir: str | Path):
-    """下載`url`檔案到指定的資料夾內。
+def download_file(url: str, filepath: str | Path):
+    """下載`url`檔案到指定的檔案路徑。
 
     Args:
         url (str): 檔案下載網址。
-        target_dir (str | Path): 目標儲存路徑。
+        filepath (str | Path): 目標儲存路徑。
     """
     response = requests.get(url, stream=True)
     response.raise_for_status()
-    filename = url.split("/")[-1]
-    filepath = Path(target_dir).expanduser() / filename
+    filepath = Path(filepath).expanduser()
     with filepath.open("wb") as f:
         for chunk in response.iter_content(chunk_size=8192):
             f.write(chunk)
