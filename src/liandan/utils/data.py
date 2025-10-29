@@ -12,7 +12,7 @@ def calculate_md5(path: str | Path, chunk_size=1024 * 1024) -> str:
 
     Args:
         path (str | Path): 檔案路徑。
-        chunk_size (int): 每次讀取的區塊大小，預設值為 1MB。
+        chunk_size (int, optional): 每次讀取的區塊大小。
 
     Returns:
         out (str): MD5 雜湊值字串。
@@ -52,9 +52,9 @@ def extract_zip(
     Args:
         path (str | Path): 壓縮檔路徑。
         target_dir (str | Path): 解壓縮目標資料夾。
-        password (bytes | None): 壓縮檔密碼，預設值為`None`。
-        with_dir (bool): 是否以壓縮檔檔名新增資料夾並解壓縮，預設值為`False`。
-        ignore_cache (bool): 是否忽略系統快取，預設值為`True`。
+        password (str, optional): 壓縮檔密碼。
+        with_dir (bool, optional): 是否以壓縮檔檔名新增資料夾並解壓縮。
+        ignore_cache (bool, optional): 是否忽略系統快取。
     """
     path = Path(path).expanduser()
     target_dir = Path(target_dir).expanduser()

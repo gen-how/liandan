@@ -16,16 +16,18 @@ class AveragePrecision(Metric):
     ) -> None:
         """初始化 AveragePrecision。
 
-        參數預設值表示計算 `IoU=0.50:0.95` 區間，若只想計算單一 IoU 閾值：
+        參數預設值表示計算`IoU=0.50:0.95`區間，若只想計算單一 IoU 閾值：
 
-        >>> ap = AveragePrecision(iou_lower=0.50, iou_step=1.0)  # AP@[IoU=0.50]
-        >>> ap = AveragePrecision(iou_lower=0.75, iou_step=1.0)  # AP@[IoU=0.75]
+        >>> # AP@[IoU=0.50]
+        >>> ap = AveragePrecision(iou_lower=0.50, iou_step=1.0)
+        >>> # AP@[IoU=0.75]
+        >>> ap = AveragePrecision(iou_lower=0.75, iou_step=1.0)
 
         Args:
-            iou_lower (float): 計算 AP 時的最低 IoU 閾值。
-            iou_upper (float): 計算 AP 時的最高 IoU 閾值。
-            iou_step (float): `[iou_lower, iou_upper)` 區間的步長。
-            max_preds (int): 納入計算的預測框數量。
+            iou_lower (float, optional): 計算 AP 時的最低 IoU 閾值。
+            iou_upper (float, optional): 計算 AP 時的最高 IoU 閾值。
+            iou_step (float, optional): 區間`[iou_lower, iou_upper)`的步長。
+            max_preds (int, optional): 納入計算的預測框數量。
         """
         self.iou_ths = torch.arange(iou_lower, iou_upper, iou_step)
         self.max_preds = max_preds

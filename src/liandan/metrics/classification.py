@@ -18,8 +18,8 @@ class Accuracy(Metric):
         """更新正確預測數與總樣本數。
 
         Args:
-            preds: 模型預測結果，形狀為 `(batch_size, num_classes)`。
-            targets: 真實的類別索引，形狀為 `(batch_size,)`。
+            preds (torch.Tensor): 模型預測，形狀為`(batch_size, num_classes)`。
+            targets (torch.Tensor): 真實類別索引，形狀為`(batch_size,)`。
         """
         preds = torch.argmax(preds, dim=1)
         self.correct += (preds == targets).sum()

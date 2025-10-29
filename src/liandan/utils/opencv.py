@@ -13,11 +13,11 @@ W = (255, 255, 255)
 
 
 def from_tensor(tensor: torch.Tensor, color_fmt="rgb") -> MatLike:
-    r"""將 PyTorch 張量轉換為 OpenCV Mat 格式。
+    """將 PyTorch 張量轉換為 OpenCV Mat 格式。
 
     Args:
-        tensor (Tensor): 形狀為 (C, H, W) 且 dtype 為 uint8 的 3 維張量。
-        color_fmt (str): 輸入張量的顏色格式。可以是`"rgb"`或`"bgr"`。
+        tensor (torch.Tensor): 形狀為`(C, H, W)`的`uint8`三維張量。
+        color_fmt (str, optional): 輸入張量的顏色格式，必需是`"rgb"`或`"bgr"`。
 
     Returns:
         out (MatLike): 轉換後的 OpenCV Mat。
@@ -44,9 +44,9 @@ def get_text_size(
 
     Args:
         text (str): 欲測量的文字內容。
-        font_face (int): 字型，預設值為`cv2.FONT_HERSHEY_COMPLEX`。
-        font_scale (float): 字型大小比例，預設值為`1.0`。
-        thickness (int): 文字粗細，預設值為`1`。
+        font_scale (float, optional): 字型大小比例。
+        font_face (int, optional): 字型。
+        thickness (int, optional): 文字粗細。
 
     Returns:
         out (tuple[int, int, int]): `(文字寬度, 文字高度, 基線高度)`。
@@ -59,9 +59,9 @@ def get_font_scale(pixel_height: int, font_face=cv2.FONT_HERSHEY_COMPLEX, thickn
     """根據指定的像素高度取得適當的字型縮放比例。
 
     Args:
-        pixel_height (int): 目標文字的像素高度。
-        font_face (int): 字型，預設值為`cv2.FONT_HERSHEY_COMPLEX`。
-        thickness (int): 文字粗細，預設值為`1`。
+        pixel_height (int): 文字的像素高度。
+        font_face (int, optional): 字型。
+        thickness (int, optional): 文字粗細。
 
     Returns:
         out (float): 適當的字型縮放比例。
