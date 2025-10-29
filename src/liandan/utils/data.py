@@ -1,7 +1,28 @@
+from hashlib import md5
 from pathlib import Path
 from zipfile import ZipFile
 
 import requests
+
+
+def calculate_md5(path: str | Path, chunk_size=1024 * 1024) -> str:
+    """計算指定檔案的 MD5 雜湊值。
+
+    此函式由`torchvision.datasets.utils.calculate_md5`修改而來。
+
+    Args:
+        path (str | Path): 檔案路徑。
+        chunk_size (int): 每次讀取的區塊大小，預設值為 1MB。
+
+    Returns:
+        out (str): MD5 雜湊值字串。
+    """
+    hasher = md5(usedforsecurity=False)
+    path = Path(path).expanduser()
+    with path.open("rb") as f:
+        while chunk := f.read(chunk_size):
+            hasher.update(chunk)
+    return hasher.hexdigest()
 
 
 def download_file(url: str, filepath: str | Path):
