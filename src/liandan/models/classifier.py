@@ -1,6 +1,6 @@
 from torch import nn
 
-from ..archs.conv import VGGBlock
+from ..archs.vgg import VGGBlock
 
 
 class VGG16(nn.Sequential):
