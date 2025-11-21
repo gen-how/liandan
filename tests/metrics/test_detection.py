@@ -4,11 +4,16 @@ import torch
 from liandan.metrics.detection import AveragePrecision, MeanAveragePrecision
 
 
-# fmt: off
 @pytest.mark.parametrize(
     "iou_lower, iou_upper, iou_step, expected",
     [
-        pytest.param(0.50, 1.0, 0.05, [0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95], id="AP@[IoU=0.50:0.95]",),
+        pytest.param(
+            0.50,
+            1.0,
+            0.05,
+            [0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95],
+            id="AP@[IoU=0.50:0.95]",
+        ),
         pytest.param(0.50, 1.0, 1.00, [0.50], id="AP@[IoU=0.50]"),
         pytest.param(0.75, 1.0, 1.00, [0.75], id="AP@[IoU=0.75]"),
     ],
@@ -16,7 +21,6 @@ from liandan.metrics.detection import AveragePrecision, MeanAveragePrecision
 def test_average_precision_set_iou_ths(iou_lower, iou_upper, iou_step, expected):
     ap = AveragePrecision(iou_lower=iou_lower, iou_upper=iou_upper, iou_step=iou_step)
     assert ap.iou_ths == pytest.approx(expected)
-# fmt: on
 
 
 def test_average_precision_update_no_preds():
