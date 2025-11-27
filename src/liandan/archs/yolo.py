@@ -1,7 +1,21 @@
+from functools import partial
+
 import torch
-from torch import nn
+import torch.nn as nn
 
 from liandan.archs.common import autopad
+
+# A BatchNorm2d constructor with the same eps and momentum values as official YOLOv8.
+BatchNorm2d = partial(nn.BatchNorm2d, eps=1e-3, momentum=0.03)
+
+# YOLOv8 model size parameters: (depth gain, channel gain, ratio)
+YOLOV8_PARAMS: dict[str, tuple[float, float, float]] = {
+    "n": (1 / 3, 1 / 4, 2.0),
+    "s": (1 / 3, 1 / 2, 2.0),
+    "m": (2 / 3, 3 / 4, 1.5),
+    "l": (1.00, 1.00, 1.00),
+    "x": (1.00, 1.25, 1.00),
+}
 
 
 class Conv(nn.Module):
@@ -21,7 +35,7 @@ class Conv(nn.Module):
     ):
         super().__init__()
         self.conv = nn.Conv2d(ci, co, k, s, autopad(k, p, d), d, g, bias=False)
-        self.norm = nn.BatchNorm2d(co) if bn else nn.Identity()
+        self.norm = BatchNorm2d(co) if bn else nn.Identity()
         if act is True:
             self.act = self.DEFAULT_ACT
         elif act is False:
@@ -50,6 +64,7 @@ class Bottleneck(nn.Module):
         self.conv1 = Conv(ci, hidden, ks[0], 1)
         self.conv2 = Conv(hidden, co, ks[1], 1, g=g)
         self.shortcut = shortcut and ci == co
+        assert self.shortcut == shortcut, "input channels != output channels"
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.shortcut:
@@ -101,94 +116,145 @@ class SPPF(nn.Module):
         return self.conv2(torch.cat((x, y1, y2, y3), dim=1))
 
 
-class DetectionHead(nn.Module):
-    def __init__(self, chs: tuple[int, ...], num_classes: int, reg_max=16):
+class Backbone(nn.Module):
+    def __init__(self, version: str, in_channels: int = 3):
         super().__init__()
-        self.ni = len(chs)
+        assert version in YOLOV8_PARAMS.keys(), f"Unknown YOLOv8 version: {version}"
+        d, w, r = YOLOV8_PARAMS[version]
+        # fmt: off
+        self.layers = nn.ModuleList([
+            Conv( in_channels,     int( 64 * w),     s=2),                           # 0 (P1 start (size /  2))  # noqa: E501
+            Conv(int( 64 * w),     int(128 * w),     s=2),                           # 1 (P2 start (size /  4))  # noqa: E501
+            C2f( int(128 * w),     int(128 * w),     n=int(3 * d), shortcut=True),   # 2                         # noqa: E501
+            Conv(int(128 * w),     int(256 * w),     s=2),                           # 3 (P3 start (size /  8))  # noqa: E501
+            C2f( int(256 * w),     int(256 * w),     n=int(6 * d), shortcut=True),   # 4 -> output 1             # noqa: E501
+            Conv(int(256 * w),     int(512 * w),     s=2),                           # 5 (P4 start (size / 16))  # noqa: E501
+            C2f( int(512 * w),     int(512 * w),     n=int(6 * d), shortcut=True),   # 6 -> output 2             # noqa: E501
+            Conv(int(512 * w),     int(512 * w * r), s=2),                           # 7 (P5 start (size / 32))  # noqa: E501
+            C2f( int(512 * w * r), int(512 * w * r), n=int(3 * d), shortcut=False),  # 8                         # noqa: E501
+            SPPF(int(512 * w * r), int(512 * w * r)),                                # 9 -> output 3             # noqa: E501
+        ])
+        # fmt: on
+        self.output_indices = {4, 6, 9}
+
+    def forward(self, x: torch.Tensor) -> list[torch.Tensor]:
+        outputs = []
+        for i, layer in enumerate(self.layers):
+            x = layer(x)
+            if i in self.output_indices:
+                outputs.append(x)
+        return outputs
+
+
+class Neck(nn.Module):
+    def __init__(self, version: str):
+        super().__init__()
+        assert version in YOLOV8_PARAMS.keys(), f"Unknown YOLOv8 version: {version}"
+        d, w, r = YOLOV8_PARAMS[version]
+        # NOTE: All trainable layers disable shortcut in the Neck.
+        self.upsample = nn.Upsample(scale_factor=2, mode="nearest")
+        # fmt: off
+        self.c12 = C2f( int(512 * w * (1+r)), int(512 * w),     n=int(3 * d))
+        self.c15 = C2f( int(768 * w),         int(256 * w),     n=int(3 * d))
+        self.c16 = Conv(int(256 * w),         int(256 * w),     s=2)
+        self.c18 = C2f( int(768 * w),         int(512 * w),     n=int(3 * d))
+        self.c19 = Conv(int(512 * w),         int(512 * w),     s=2)
+        self.c21 = C2f( int(512 * w * (1+r)), int(512 * w * r), n=int(3 * d))
+        # fmt: on
+
+    def forward(self, xs: list[torch.Tensor]) -> list[torch.Tensor]:
+        # Output tensor from Backbone.
+        b4, b6, b9 = xs
+        # Treats upsample and torch.cat both as layers to calculate the order.
+        x = self.upsample(b9)
+        x = torch.cat((x, b6), dim=1)
+        x = self.c12(x)
+        x12 = x
+        x = self.upsample(x)
+        x = torch.cat((x, b4), dim=1)
+        x = self.c15(x)
+        y15 = x
+        x = self.c16(x)
+        x = torch.cat((x, x12), dim=1)
+        x = self.c18(x)
+        y18 = x
+        x = self.c19(x)
+        x = torch.cat((x, b9), dim=1)
+        x = self.c21(x)
+        y21 = x
+        return [y15, y18, y21]
+
+
+class Heads(nn.Module):
+    def __init__(self, version: str, num_classes=80, reg_max=16):
+        super().__init__()
+        assert version in YOLOV8_PARAMS.keys(), f"Unknown YOLOv8 version: {version}"
+        _, w, r = YOLOV8_PARAMS[version]
         self.nc = num_classes
         self.reg_max = reg_max
+        chs = (int(256 * w), int(512 * w), int(512 * w * r))
         box_hidden = max(chs[0] // 4, self.reg_max * 4, 16)
         cls_hidden = max(chs[0], min(self.nc, 100))
         self.box_convs = nn.ModuleList(
             nn.Sequential(
-                Conv(c, box_hidden, 3),
-                Conv(box_hidden, box_hidden, 3),
-                nn.Conv2d(box_hidden, self.reg_max * 4, 1),
+                Conv(c, box_hidden, k=3),
+                Conv(box_hidden, box_hidden, k=3),
+                nn.Conv2d(box_hidden, self.reg_max * 4, kernel_size=1),
             )
             for c in chs
         )
         self.cls_convs = nn.ModuleList(
             nn.Sequential(
-                Conv(c, cls_hidden, 3),
-                Conv(cls_hidden, cls_hidden, 3),
-                nn.Conv2d(cls_hidden, self.nc, 1),
+                Conv(c, cls_hidden, k=3),
+                Conv(cls_hidden, cls_hidden, k=3),
+                nn.Conv2d(cls_hidden, self.nc, kernel_size=1),
             )
             for c in chs
         )
 
     def forward(self, xs: list[torch.Tensor]) -> list[torch.Tensor]:
-        ys = []
-        for i in range(self.ni):
+        for i in range(len(self.box_convs)):
             box = self.box_convs[i](xs[i])
             cls = self.cls_convs[i](xs[i])
-            ys.append(torch.cat((box, cls), dim=1))
-        return ys
+            xs[i] = torch.cat((box, cls), dim=1)
+        return xs
 
 
 class YOLOv8(nn.Module):
-    def __init__(self, num_classes: int = 80, reg_max: int = 16):
+    def __init__(
+        self,
+        version: str,
+        num_classes: int = 80,
+        img_size: tuple[int, int] = (640, 640),
+        reg_max: int = 16,
+    ):
         super().__init__()
-        # fmt: off
-        self.backbone = nn.ModuleList(
-            (
-                Conv(  3,  16, s=2),                 # 0 -> P1 start (size /  2)
-                Conv( 16,  32, s=2),                 # 1 -> P2 start (size /  4)
-                C2f(  32,  32, n=1, shortcut=True),  # 2
-                Conv( 32,  64, s=2),                 # 3 -> P3 start (size /  8)
-                C2f(  64,  64, n=2, shortcut=True),  # 4
-                Conv( 64, 128, s=2),                 # 5 -> P4 start (size / 16)
-                C2f( 128, 128, n=2, shortcut=True),  # 6
-                Conv(128, 256, s=2),                 # 7 -> P5 start (size / 32)
-                C2f( 256, 256, n=1, shortcut=False), # 8
-                SPPF(256, 256),                      # 9
-            )
-        )
-        # fmt: on
-        self.u10 = nn.Upsample(scale_factor=2, mode="nearest")
-        self.c11 = C2f(256 + 128, 128, n=1, shortcut=False)
-        self.u12 = nn.Upsample(scale_factor=2, mode="nearest")
-        self.c13 = C2f(128 + 64, 64, n=1, shortcut=False)
-        self.c14 = Conv(64, 64, s=2)
-        self.c15 = C2f(64 + 128, 128, n=1, shortcut=False)
-        self.c16 = Conv(128, 128, s=2)
-        self.c17 = C2f(128 + 256, 256, n=1, shortcut=False)
-        self.head = DetectionHead((64, 128, 256), num_classes, reg_max)
+        assert version in YOLOV8_PARAMS.keys(), f"Unknown YOLOv8 version: {version}"
+        assert img_size[0] % 32 == 0, "Image width must be multiple of 32"
+        assert img_size[1] % 32 == 0, "Image height must be multiple of 32"
+        self.num_classes = num_classes
+        self.img_size = img_size
+        self.reg_max = reg_max
+        self.strides = (8, 16, 32)
+        self.backbone = Backbone(version)
+        self.neck = Neck(version)
+        self.heads = Heads(version, num_classes, reg_max)
 
     def forward(self, x: torch.Tensor) -> list[torch.Tensor]:
-        backbone_outputs = {}
-        for i, b in enumerate(self.backbone):
-            x = b(x)
-            if i in (4, 6, 9):
-                backbone_outputs[i] = x
+        xs = self.heads(self.neck(self.backbone(x)))
+        if self.training:
+            return xs
 
-        x = self.u10(backbone_outputs[9])
-        x = torch.cat((x, backbone_outputs[6]), dim=1)
-        y11 = self.c11(x)
-        x = self.u12(y11)
-        x = torch.cat((x, backbone_outputs[4]), dim=1)
-        y13 = self.c13(x)
-        x = self.c14(y13)
-        x = torch.cat((x, y11), dim=1)
-        y15 = self.c15(x)
-        x = self.c16(y15)
-        x = torch.cat((x, backbone_outputs[9]), dim=1)
-        y17 = self.c17(x)
-        return self.head([y13, y15, y17])
+        # TODO: Inference path.
+        return []
 
 
 if __name__ == "__main__":
-    x = torch.zeros((1, 3, 640, 640), dtype=torch.float32)
-    model = YOLOv8()
+    img_size = (640, 640)
+    x = torch.zeros((1, 3, img_size[1], img_size[0]), dtype=torch.float32)
+    model = YOLOv8(version="n", img_size=img_size)
+    print(model)
     ys = model(x)
-    for y in ys:
-        print(y.shape)
+    for i, y in enumerate(ys):
+        print(f"Head {i} shape = {y.shape}")
+    print(f"Total parameters: {sum(p.numel() for p in model.parameters()):,}")
