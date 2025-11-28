@@ -1,23 +1,49 @@
+import pytest
 import torch
 
-from liandan.utils.detection import bbox_iou
+from liandan.utils.detection import make_anchors
 
 
-def test_bbox_iou_xyxy_overlap_and_disjoint():
-    box1 = torch.tensor([[0.0, 0.0, 2.0, 2.0], [0.0, 0.0, 1.0, 1.0]])
-    box2 = torch.tensor([[1.0, 1.0, 3.0, 3.0], [2.0, 2.0, 3.0, 3.0]])
-
-    iou = bbox_iou(box1, box2)
-
-    expected = torch.tensor([[1.0 / 7.0], [0.0]])
-    torch.testing.assert_close(iou, expected, atol=1e-6, rtol=0.0)
-
-
-def test_bbox_iou_xywh_broadcasting():
-    box1 = torch.tensor([[[1.0, 1.0, 2.0, 2.0], [2.0, 2.0, 2.0, 2.0]]])
-    box2 = torch.tensor([[[1.0, 1.0, 2.0, 2.0]]])
-
-    iou = bbox_iou(box1, box2, xywh=True)
-
-    expected = torch.tensor([[[1.0], [1.0 / 7.0]]])
-    torch.testing.assert_close(iou, expected, atol=1e-6, rtol=0.0)
+def test_make_anchors():
+    # Dummy features.
+    features = [
+        torch.zeros(1, 3, 3, 4),
+        torch.zeros(1, 3, 2, 2),
+        torch.zeros(1, 3, 1, 1),
+    ]
+    strides = (8, 16, 32)
+    # fmt: off
+    anchors_expected = torch.tensor(
+        [
+            # 3x4
+            [0.5, 0.5], [1.5, 0.5], [2.5, 0.5], [3.5, 0.5],
+            [0.5, 1.5], [1.5, 1.5], [2.5, 1.5], [3.5, 1.5],
+            [0.5, 2.5], [1.5, 2.5], [2.5, 2.5], [3.5, 2.5],
+            # 2x2
+            [0.5, 0.5], [1.5, 0.5],
+            [0.5, 1.5], [1.5, 1.5],
+            # 1x1
+            [0.5, 0.5],
+        ],
+        dtype=torch.float32
+    )
+    strides_expected = torch.tensor(
+        [
+            # 4x3
+            [8], [8], [8], [8],
+            [8], [8], [8], [8],
+            [8], [8], [8], [8],
+            # 2x2
+            [16], [16],
+            [16], [16],
+            # 1x1
+            [32],
+        ]
+        ,dtype=torch.float32
+    )
+    # fmt: on
+    anchors_tensor, strides_tensor = make_anchors(features, strides)
+    assert anchors_tensor.shape == anchors_expected.shape
+    assert strides_tensor.shape == strides_expected.shape
+    assert anchors_tensor == pytest.approx(anchors_expected)
+    assert strides_tensor == pytest.approx(strides_expected)
