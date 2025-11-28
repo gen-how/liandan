@@ -1,21 +1,65 @@
+from collections.abc import Sequence
+
 import torch
 
 
+def make_anchors(
+    features: Sequence[torch.Tensor],
+    strides: Sequence[int],
+    grid_cell_offset: float = 0.5,
+):
+    """根據 Head 特徵圖的大小及其與原圖的縮放比例產生錨點和對應的步幅。
+
+    Args:
+        features (Sequence[torch.Tensor]):
+            Head 特徵圖的張量序列，每個張量預期的形狀為`(B, C, H, W)`。
+        strides (Sequence[int]):
+            每個錨點之間實際的步幅。如果特徵圖長寬是輸入圖片的`1/8`，則步幅為`8`。
+        grid_cell_offset (float, optional):
+            錨點在每個網格單元內的偏移量，預設為`0.5`表示取網格中心為錨點座標。
+
+    Returns:
+        out (tuple[torch.Tensor, torch.Tensor]):
+            1. 包含所有錨點座標的張量，形狀為`(N, 2)`，其中`N`是所有特徵圖的錨點總數。
+            2. 每個錨點對應的步幅張量，形狀為`(N, 1)`。
+    """
+    dtype = features[0].dtype
+    device = features[0].device
+    anchors_tensors, strides_tensors = [], []
+    for feat, stride in zip(features, strides, strict=True):
+        h, w = feat.shape[-2:]
+        sx = torch.arange(w, dtype=dtype) + grid_cell_offset  # shifted x scale
+        sy = torch.arange(h, dtype=dtype) + grid_cell_offset  # shifted y scale
+        # Makes grids with shape (h, w) containing x and y coordinates respectively.
+        gx, gy = torch.meshgrid(sx, sy, indexing="xy")
+        # Stacks them as one grid with shape (h, w, 2).
+        grid = torch.stack((gx, gy), dim=-1)
+        anchors_tensors.append(grid.view(h * w, 2))
+        strides_tensors.append(torch.full((h * w, 1), stride, dtype=dtype))
+    return (
+        torch.cat(anchors_tensors).to(device),
+        torch.cat(strides_tensors).to(device),
+    )
+
+
 def bbox_iou(
-    box1: torch.Tensor, box2: torch.Tensor, xywh=False, eps=1e-7
+    bbox1: torch.Tensor,
+    bbox2: torch.Tensor,
+    xywh: bool = False,
+    eps: float = 1e-7,
 ) -> torch.Tensor:
     """
     計算兩組 Bounding boxes 之間的 IoU。
 
-    此函式支援各種形狀的`box1`及`box2`，只要最後一個維度是 4 即可。
+    此函式支援各種形狀的`bbox1`及`bbox2`，只要最後一個維度是 4 即可。
     例如：可以傳入形狀為`(4,)`、`(N, 4)`、`(B, N, 4)`或`(B, N, 1, 4)`的張量。
     如果`xywh=True`程式內部會拆分最後一個維度為中心點`(x, y, w, h)`，否則為
     `(x0, y0, x1, y1)`。
 
     Args:
-        box1 (torch.Tensor):
+        bbox1 (torch.Tensor):
             表示一或多個 Bounding boxes 的張量，最後一個維度是 4。
-        box2 (torch.Tensor):
+        bbox2 (torch.Tensor):
             表示一或多個 Bounding boxes 的張量，最後一個維度是 4。
         xywh (bool, optional):
             若是`True`則以中心點`(x, y, w, h)`格式表示 Bounding boxes ，否則以
@@ -29,15 +73,15 @@ def bbox_iou(
     """
     if xywh:
         # Converts (x, y, w, h) to (x0, y0, x1, y1).
-        (x1, y1, w1, h1) = box1.chunk(4, dim=-1)
-        (x2, y2, w2, h2) = box2.chunk(4, dim=-1)
+        (x1, y1, w1, h1) = bbox1.chunk(4, dim=-1)
+        (x2, y2, w2, h2) = bbox2.chunk(4, dim=-1)
         w1_, h1_ = w1 / 2, h1 / 2
         w2_, h2_ = w2 / 2, h2 / 2
         b1_x0, b1_y0, b1_x1, b1_y1 = x1 - w1_, y1 - h1_, x1 + w1_, y1 + h1_
         b2_x0, b2_y0, b2_x1, b2_y1 = x2 - w2_, y2 - h2_, x2 + w2_, y2 + h2_
     else:
-        b1_x0, b1_y0, b1_x1, b1_y1 = box1.chunk(4, dim=-1)
-        b2_x0, b2_y0, b2_x1, b2_y1 = box2.chunk(4, dim=-1)
+        b1_x0, b1_y0, b1_x1, b1_y1 = bbox1.chunk(4, dim=-1)
+        b2_x0, b2_y0, b2_x1, b2_y1 = bbox2.chunk(4, dim=-1)
         w1, h1 = b1_x1 - b1_x0, b1_y1 - b1_y0 + eps
         w2, h2 = b2_x1 - b2_x0, b2_y1 - b2_y0 + eps
 
