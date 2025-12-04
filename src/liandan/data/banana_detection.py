@@ -1,15 +1,14 @@
 import csv
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import torch
-from torch.utils.data import Dataset
 from torchvision.io import decode_image
 
 from liandan.utils.data import calculate_md5, download_file, extract_zip
 
 
-class BananaDetection(Dataset):
+class BananaDetection(torch.utils.data.Dataset):
     """香蕉檢測資料集。
 
     此資料集用於訓練香蕉檢測模型，包含訓練集與驗證集兩個部分。
@@ -40,11 +39,34 @@ class BananaDetection(Dataset):
 
         self.images, self.labels = self._load_data()
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.labels)
 
-    def __getitem__(self, index):
-        return self.images[index], self.labels[index]
+    def __getitem__(self, index: int) -> dict[str, Any]:
+        sample = {
+            "boxes": self.labels[index, 1:],
+            "classes": self.labels[index, 0],
+            "image": self.images[index],
+        }
+        return sample
+
+    @staticmethod
+    def collate_fn(batch: list[dict[str, Any]]) -> dict[str, torch.Tensor]:
+        """提供給`torch.utils.data.DataLoader`使用的批次整理函數。
+
+        Args:
+            batch (list[dict[str, Any]]): 單一批次的樣本列表。
+
+        Returns:
+            out (dict[str, torch.Tensor]): 整理後的批次資料。
+        """
+        collated = {
+            "images": torch.stack([b["image"] for b in batch]),
+            "batch_idx": torch.arange(len(batch)),
+            "boxes": torch.stack([b["boxes"] for b in batch]),
+            "classes": torch.stack([b["classes"] for b in batch]),
+        }
+        return collated
 
     def _load_data(self):
         split_name = {"train": "bananas_train", "valid": "bananas_val"}
@@ -57,8 +79,9 @@ class BananaDetection(Dataset):
             images = []
             labels = []
             for row in reader:
+                # Each row contains [img_name, cls, x0, y0, x1, y1].
                 images.append(decode_image(str(image_dir / row[0])))
-                labels.append(list(map(int, row[1:])))  # [cls, x0, y0, x1, y1]
+                labels.append(list(map(int, row[1:])))
             # All images have the same shape, so we can stack them directly.
             return torch.stack(images), torch.tensor(labels)
 
@@ -85,9 +108,3 @@ class BananaDetection(Dataset):
                 # Extracts the downloaded resource.
                 extract_zip(filepath, self.root.parent)
                 print(f"Extracted '{filename}'.")
-
-
-if __name__ == "__main__":
-    ds = BananaDetection("./datasets/banana-detection", split="valid", download=True)
-    for image, label in ds:
-        print(image.shape, label)
