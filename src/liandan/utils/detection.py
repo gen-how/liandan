@@ -20,12 +20,12 @@ def make_anchors(
 
     Returns:
         out (tuple[torch.Tensor, torch.Tensor]):
-            1. 包含所有錨點座標的張量，形狀為`(N, 2)`，其中`N`是所有特徵圖的錨點總數。
-            2. 每個錨點對應的步幅張量，形狀為`(N, 1)`。
+            1. 包含所有錨點座標的張量，形狀為`(num_anchors, 2)`。
+            2. 每個錨點對應的步幅張量，形狀為`(num_anchors, 1)`。
     """
     dtype = features[0].dtype
     device = features[0].device
-    anchors_tensors, strides_tensors = [], []
+    anchor_tensors, stride_tensors = [], []
     for feat, stride in zip(features, strides, strict=True):
         h, w = feat.shape[-2:]
         sx = torch.arange(w, dtype=dtype) + grid_cell_offset  # shifted x scale
@@ -34,12 +34,22 @@ def make_anchors(
         gx, gy = torch.meshgrid(sx, sy, indexing="xy")
         # Stacks them as one grid with shape (h, w, 2).
         grid = torch.stack((gx, gy), dim=-1)
-        anchors_tensors.append(grid.view(h * w, 2))
-        strides_tensors.append(torch.full((h * w, 1), stride, dtype=dtype))
+        anchor_tensors.append(grid.view(h * w, 2))
+        stride_tensors.append(torch.full((h * w, 1), stride, dtype=dtype))
     return (
-        torch.cat(anchors_tensors).to(device),
-        torch.cat(strides_tensors).to(device),
+        torch.cat(anchor_tensors).to(device),
+        torch.cat(stride_tensors).to(device),
     )
+
+
+def ltrb2xyxy(
+    ltrb: torch.Tensor, anchor_points: torch.Tensor, dim: int = -1
+) -> torch.Tensor:
+    """將錨點對偵測框左上右下距離轉換為偵測框左上與右下座標`(x0, y0, x1, y1)`。"""
+    lt, rb = ltrb.chunk(2, dim=dim)
+    x0y0 = anchor_points - lt
+    x1y1 = anchor_points + rb
+    return torch.cat((x0y0, x1y1), dim=dim)
 
 
 def bbox_iou(

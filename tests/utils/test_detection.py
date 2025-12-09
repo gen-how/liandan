@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from liandan.utils.detection import make_anchors
+from liandan.utils.detection import ltrb2xyxy, make_anchors
 
 
 def test_make_anchors():
@@ -47,3 +47,56 @@ def test_make_anchors():
     assert strides_tensor.shape == strides_expected.shape
     assert anchors_tensor == pytest.approx(anchors_expected)
     assert strides_tensor == pytest.approx(strides_expected)
+
+
+def test_ltrb2xyxy():
+    # fmt: off
+    # Dummy anchor points with shape: (4, 2).
+    anchor_points = torch.tensor(
+        [
+            [ 5.0,  5.0],
+            [10.0, 10.0],
+            [15.0, 15.0],
+            [20.0, 20.0],
+        ]
+    )
+    # Dummy ltrb with shape: (2, 4, 4).
+    # Because it comes from network output, there will be a batch dimension.
+    ltrb = torch.tensor(
+        [
+            [
+                [1.0, 1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0, 1.0],
+            ],
+            [
+                [2.0, 2.0, 2.0, 2.0],
+                [2.0, 2.0, 2.0, 2.0],
+                [2.0, 2.0, 2.0, 2.0],
+                [2.0, 2.0, 2.0, 2.0],
+            ],
+        ]
+    )
+
+    # Expects broadcasted result with shape: (2, 4, 4).
+    expected = torch.tensor(
+        [
+            [
+                [ 4.0,  4.0,  6.0,  6.0],
+                [ 9.0,  9.0, 11.0, 11.0],
+                [14.0, 14.0, 16.0, 16.0],
+                [19.0, 19.0, 21.0, 21.0],
+            ],
+            [
+                [ 3.0,  3.0,  7.0,  7.0],
+                [ 8.0,  8.0, 12.0, 12.0],
+                [13.0, 13.0, 17.0, 17.0],
+                [18.0, 18.0, 22.0, 22.0],
+            ],
+        ]
+    )
+    # fmt: on
+    result = ltrb2xyxy(ltrb, anchor_points)
+    assert result.shape == expected.shape
+    assert result == pytest.approx(expected)
