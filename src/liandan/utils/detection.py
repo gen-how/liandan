@@ -65,51 +65,55 @@ def ltrb2xyxy(
     return torch.cat((x0y0, x1y1), dim=dim)
 
 
-def bbox_iou(
-    bbox1: torch.Tensor,
-    bbox2: torch.Tensor,
-    xywh: bool = False,
-    eps: float = 1e-7,
+def boxes_iou(
+    boxes1: torch.Tensor, boxes2: torch.Tensor, cxcywh: bool = False, eps: float = 1e-7
 ) -> torch.Tensor:
-    """
-    計算兩組 Bounding boxes 之間的 IoU。
+    """計算兩組偵測框之間的 IoU。
 
-    此函式支援各種形狀的`bbox1`及`bbox2`，只要最後一個維度是 4 即可。
-    例如：可以傳入形狀為`(4,)`、`(N, 4)`、`(B, N, 4)`或`(B, N, 1, 4)`的張量。
-    如果`xywh=True`程式內部會拆分最後一個維度為中心點`(x, y, w, h)`，否則為
-    `(x0, y0, x1, y1)`。
+    此函式支援各種形狀的偵測框，根據兩組偵測框之間的形狀會產生不同意義的結果。
+
+    以下條列幾種常見輸入形狀的使用情景及輸出形狀：
+    1. `(4,)` & `(4,)`：
+        計算兩個偵測框的 IoU，輸出為`(1,)`。
+    2. `(N, 4)` & `(4,)`：
+        計算`N`個偵測框與單一偵測框之間的 IoU，輸出為`(N,)`。
+    3. `(N, 4)` & `(N, 4)`：
+        計算`N`個偵測框兩兩之間的 IoU，輸出為`(N,)`。
+    4. `(N, 1, 4)` & `(1, M, 4)`：
+        計算`N`個偵測框與`M`個偵測框之間的 IoU，輸出為`(N, M)`。
 
     Args:
-        bbox1 (torch.Tensor):
-            表示一或多個 Bounding boxes 的張量，最後一個維度是 4。
-        bbox2 (torch.Tensor):
-            表示一或多個 Bounding boxes 的張量，最後一個維度是 4。
-        xywh (bool, optional):
-            若是`True`則以中心點`(x, y, w, h)`格式表示 Bounding boxes ，否則以
-            `(x0, y0, x1, y1)`格式表示。
+        boxes1 (torch.Tensor):
+            表示一或多個偵測框的張量，最後一個維度大小必需是 4。
+        boxes2 (torch.Tensor):
+            表示一或多個偵測框的張量，最後一個維度大小必需是 4。
+        cxcywh (bool, optional):
+            若`True`則以`(cx, cy, w, h)`格式處理偵測框，否則以`(x0, y0, x1, y1)`格式。
+            預設為`False`。
         eps (float, optional):
-            用於避免除以零的極小值。
+            用於避免除以零的極小值。預設為`1e-7`。
 
     Returns:
         out (torch.Tensor):
             表示 IoU 值的張量。
     """
-    if xywh:
-        # Converts (x, y, w, h) to (x0, y0, x1, y1).
-        (x1, y1, w1, h1) = bbox1.chunk(4, dim=-1)
-        (x2, y2, w2, h2) = bbox2.chunk(4, dim=-1)
-        w1_, h1_ = w1 / 2, h1 / 2
-        w2_, h2_ = w2 / 2, h2 / 2
-        b1_x0, b1_y0, b1_x1, b1_y1 = x1 - w1_, y1 - h1_, x1 + w1_, y1 + h1_
-        b2_x0, b2_y0, b2_x1, b2_y1 = x2 - w2_, y2 - h2_, x2 + w2_, y2 + h2_
+    if cxcywh:
+        # fmt: off
+        b1_cx, b1_cy, b1_w, b1_h = boxes1.chunk(4, dim=-1)
+        b2_cx, b2_cy, b2_w, b2_h = boxes2.chunk(4, dim=-1)
+        b1_w2, b1_h2 = b1_w / 2, b1_h / 2
+        b2_w2, b2_h2 = b2_w / 2, b2_h / 2
+        b1_x0, b1_y0, b1_x1, b1_y1 = b1_cx - b1_w2, b1_cy - b1_h2, b1_cx + b1_w2, b1_cy + b1_h2
+        b2_x0, b2_y0, b2_x1, b2_y1 = b2_cx - b2_w2, b2_cy - b2_h2, b2_cx + b2_w2, b2_cy + b2_h2
+        # fmt: on
     else:
-        b1_x0, b1_y0, b1_x1, b1_y1 = bbox1.chunk(4, dim=-1)
-        b2_x0, b2_y0, b2_x1, b2_y1 = bbox2.chunk(4, dim=-1)
-        w1, h1 = b1_x1 - b1_x0, b1_y1 - b1_y0 + eps
-        w2, h2 = b2_x1 - b2_x0, b2_y1 - b2_y0 + eps
+        b1_x0, b1_y0, b1_x1, b1_y1 = boxes1.chunk(4, dim=-1)
+        b2_x0, b2_y0, b2_x1, b2_y1 = boxes2.chunk(4, dim=-1)
+        b1_w, b1_h = b1_x1 - b1_x0, b1_y1 - b1_y0 + eps
+        b2_w, b2_h = b2_x1 - b2_x0, b2_y1 - b2_y0 + eps
 
-    inter_x0 = (b1_x1.minimum(b2_x1) - b1_x0.maximum(b2_x0)).clamp_(min=0)
-    inter_y0 = (b1_y1.minimum(b2_y1) - b1_y0.maximum(b2_y0)).clamp_(min=0)
-    inter_area = inter_x0 * inter_y0
-    union_area = w1 * h1 + w2 * h2 - inter_area + eps
+    inter_w = (b1_x1.minimum(b2_x1) - b1_x0.maximum(b2_x0)).clamp_(min=0)
+    inter_h = (b1_y1.minimum(b2_y1) - b1_y0.maximum(b2_y0)).clamp_(min=0)
+    inter_area = inter_w * inter_h
+    union_area = b1_w * b1_h + b2_w * b2_h - inter_area + eps
     return inter_area / union_area
