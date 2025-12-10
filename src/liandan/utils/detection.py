@@ -45,7 +45,20 @@ def make_anchors(
 def ltrb2xyxy(
     ltrb: torch.Tensor, anchor_points: torch.Tensor, dim: int = -1
 ) -> torch.Tensor:
-    """將錨點對偵測框左上右下距離轉換為偵測框左上與右下座標`(x0, y0, x1, y1)`。"""
+    """將錨點對偵測框左上右下距離轉換為偵測框左上與右下座標`(x0, y0, x1, y1)`。
+
+    Args:
+        ltrb (torch.Tensor):
+            表示錨點與偵測框左、上、右、下距離的張量，形狀為`(..., 4)`。
+        anchor_points (torch.Tensor):
+            表示錨點座標的張量，形狀為`(..., 2)`。
+        dim (int, optional):
+            偵測框距離與錨點座標所在的維度。預設為`-1`表示最後一個維度。
+
+    Returns:
+        out (torch.Tensor):
+            表示偵測框左上與右下座標的張量，形狀為`(..., 4)`。
+    """
     lt, rb = ltrb.chunk(2, dim=dim)
     x0y0 = anchor_points - lt
     x1y1 = anchor_points + rb
