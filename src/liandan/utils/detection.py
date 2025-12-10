@@ -117,3 +117,27 @@ def boxes_iou(
     inter_area = inter_w * inter_h
     union_area = b1_w * b1_h + b2_w * b2_h - inter_area + eps
     return inter_area / union_area
+
+
+def cxcywh2xyxy(
+    boxes: torch.Tensor, split: bool = False
+) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """將偵測框從中心座標格式`(cx, cy, w, h)`轉換為左上與右下座標格式`(x0, y0, x1, y1)`。
+
+    Args:
+        boxes (torch.Tensor):
+            表示偵測框的張量，形狀為`(..., 4)`。
+        split (bool, optional):
+            是否將輸入張量拆分為四個部份回傳。預設為`False`。
+
+    Returns:
+        out (torch.Tensor):
+            轉換後的偵測框張量，形狀為`(..., 4)`。
+    """
+    cx, cy, w, h = boxes.chunk(4, dim=-1)
+    w_, h_ = w / 2, h / 2
+    x0, y0 = cx - w_, cy - h_
+    x1, y1 = cx + w_, cy + h_
+    if split:
+        return x0, y0, x1, y1
+    return torch.cat((x0, y0, x1, y1), dim=-1)
