@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from liandan.utils.detection import ltrb2xyxy, make_anchors
+from liandan.utils.detection import boxes_iou, ltrb2xyxy, make_anchors
 
 
 def test_make_anchors():
@@ -43,10 +43,8 @@ def test_make_anchors():
     )
     # fmt: on
     anchors_tensor, strides_tensor = make_anchors(features, strides)
-    assert anchors_tensor.shape == anchors_expected.shape
-    assert strides_tensor.shape == strides_expected.shape
-    assert anchors_tensor == pytest.approx(anchors_expected)
-    assert strides_tensor == pytest.approx(strides_expected)
+    torch.testing.assert_close(anchors_tensor, anchors_expected)
+    torch.testing.assert_close(strides_tensor, strides_expected)
 
 
 def test_ltrb2xyxy():
@@ -98,5 +96,29 @@ def test_ltrb2xyxy():
     )
     # fmt: on
     result = ltrb2xyxy(ltrb, anchor_points)
-    assert result.shape == expected.shape
-    assert result == pytest.approx(expected)
+    torch.testing.assert_close(result, expected)
+
+
+@pytest.mark.parametrize(
+    "boxes1, boxes2, cxcywh, expected",
+    [
+        pytest.param(
+            torch.tensor([0.0, 0.0, 5.0, 5.0]),
+            torch.tensor([2.0, 2.0, 7.0, 7.0]),
+            False,
+            torch.tensor([9.0 / (25.0 + 25.0 - 9.0) + 1e-7]),
+            id="boxes_iou(cxcywh=False) w/ shape (4,) & (4,)",
+        ),
+        pytest.param(
+            torch.tensor([2.5, 2.5, 5.0, 5.0]),
+            torch.tensor([4.5, 4.5, 5.0, 5.0]),
+            True,
+            torch.tensor([9.0 / (25.0 + 25.0 - 9.0) + 1e-7]),
+            id="boxes_iou(cxcywh=True) w/ shape (4,) & (4,)",
+        ),
+        # TODO: Add more test cases for different shapes.
+    ],
+)
+def test_boxes_iou(boxes1, boxes2, cxcywh, expected):
+    result = boxes_iou(boxes1, boxes2, cxcywh)
+    torch.testing.assert_close(result, expected)
