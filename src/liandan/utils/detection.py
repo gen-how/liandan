@@ -116,7 +116,53 @@ def boxes_iou(
     inter_h = (b1_y1.minimum(b2_y1) - b1_y0.maximum(b2_y0)).clamp_(min=0)
     inter_area = inter_w * inter_h
     union_area = b1_w * b1_h + b2_w * b2_h - inter_area + eps
-    return inter_area / union_area
+    iou = inter_area / union_area
+    return iou
+
+
+def boxes_ciou(
+    boxes1: torch.Tensor, boxes2: torch.Tensor, cxcywh: bool = False, eps: float = 1e-7
+) -> torch.Tensor:
+    """計算兩組偵測框之間的 [Complete IoU](https://arxiv.org/abs/1911.08287v1)，請參考`boxes_iou`函式的說明。"""
+    if cxcywh:
+        # fmt: off
+        b1_cx, b1_cy, b1_w, b1_h = boxes1.chunk(4, dim=-1)
+        b2_cx, b2_cy, b2_w, b2_h = boxes2.chunk(4, dim=-1)
+        b1_w2, b1_h2 = b1_w / 2, b1_h / 2
+        b2_w2, b2_h2 = b2_w / 2, b2_h / 2
+        b1_x0, b1_y0, b1_x1, b1_y1 = b1_cx - b1_w2, b1_cy - b1_h2, b1_cx + b1_w2, b1_cy + b1_h2
+        b2_x0, b2_y0, b2_x1, b2_y1 = b2_cx - b2_w2, b2_cy - b2_h2, b2_cx + b2_w2, b2_cy + b2_h2
+        # fmt: on
+    else:
+        b1_x0, b1_y0, b1_x1, b1_y1 = boxes1.chunk(4, dim=-1)
+        b2_x0, b2_y0, b2_x1, b2_y1 = boxes2.chunk(4, dim=-1)
+        b1_w, b1_h = b1_x1 - b1_x0, b1_y1 - b1_y0 + eps
+        b2_w, b2_h = b2_x1 - b2_x0, b2_y1 - b2_y0 + eps
+
+    inter_w = (b1_x1.minimum(b2_x1) - b1_x0.maximum(b2_x0)).clamp_(min=0)
+    inter_h = (b1_y1.minimum(b2_y1) - b1_y0.maximum(b2_y0)).clamp_(min=0)
+    inter_area = inter_w * inter_h
+    union_area = b1_w * b1_h + b2_w * b2_h - inter_area + eps
+    iou = inter_area / union_area
+
+    # Compute squared length of smallest enclosing box diagonal.
+    c2 = (
+        (b1_x1.maximum(b2_x1) - b1_x0.minimum(b2_x0)).pow(2)
+        + (b1_y1.maximum(b2_y1) - b1_y0.minimum(b2_y0)).pow(2)
+        + eps
+    )
+
+    # Compute squared distance between the centers of the two bounding boxes.
+    rho2 = (
+        (b2_x0 + b2_x1 - b1_x0 - b1_x1).pow(2) + (b2_y0 + b2_y1 - b1_y0 - b1_y1).pow(2)
+    ) / 4
+
+    # Compute the consistency of aspect ratio between the two bounding boxes.
+    v = (4 / torch.pi**2) * ((b2_w / b2_h).atan() - (b1_w / b1_h).atan()).pow(2)
+
+    with torch.no_grad():
+        alpha = v / (v - iou + (1 + eps))
+    return iou - (rho2 / c2 + v * alpha)
 
 
 def cxcywh2xyxy(

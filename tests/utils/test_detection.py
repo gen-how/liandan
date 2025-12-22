@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from liandan.utils.detection import boxes_iou, ltrb2xyxy, make_anchors
+from liandan.utils.detection import boxes_ciou, boxes_iou, ltrb2xyxy, make_anchors
 
 
 def test_make_anchors():
@@ -100,25 +100,80 @@ def test_ltrb2xyxy():
 
 
 @pytest.mark.parametrize(
-    "boxes1, boxes2, cxcywh, expected",
+    "boxes1, boxes2, expected",
     [
         pytest.param(
-            torch.tensor([0.0, 0.0, 5.0, 5.0]),
-            torch.tensor([2.0, 2.0, 7.0, 7.0]),
-            False,
-            torch.tensor([9.0 / (25.0 + 25.0 - 9.0) + 1e-7]),
-            id="boxes_iou(cxcywh=False) w/ shape (4,) & (4,)",
+            torch.tensor([10, 10, 50, 50]),
+            torch.tensor([10, 10, 50, 50]),
+            torch.tensor([1.0]),
+            id="boxes_iou_xyxy identical boxes",
         ),
         pytest.param(
-            torch.tensor([2.5, 2.5, 5.0, 5.0]),
-            torch.tensor([4.5, 4.5, 5.0, 5.0]),
-            True,
-            torch.tensor([9.0 / (25.0 + 25.0 - 9.0) + 1e-7]),
-            id="boxes_iou(cxcywh=True) w/ shape (4,) & (4,)",
+            torch.tensor([0, 0, 10, 10]),
+            torch.tensor([10, 0, 20, 10]),
+            torch.tensor([0.0]),
+            id="boxes_iou_xyxy non-overlapping boxes",
         ),
-        # TODO: Add more test cases for different shapes.
+        pytest.param(
+            torch.tensor([0, 0, 10, 10]),
+            torch.tensor([5, 5, 15, 15]),
+            torch.tensor([(5 * 5) / (10 * 10 + 10 * 10 - 5 * 5)]),
+            id="boxes_iou_xyxy overlapping boxes",
+        ),
+        pytest.param(
+            torch.tensor([[0, 0, 10, 10]]),
+            torch.tensor([[10, 0, 20, 10], [5, 5, 15, 15]]),
+            torch.tensor([[0.0], [(5 * 5) / (10 * 10 + 10 * 10 - 5 * 5)]]),
+            id="boxes_iou_xyxy broadcast (1, 4) & (2, 4)",
+        ),
     ],
 )
-def test_boxes_iou(boxes1, boxes2, cxcywh, expected):
-    result = boxes_iou(boxes1, boxes2, cxcywh)
+def test_boxes_iou_xyxy(boxes1, boxes2, expected):
+    result = boxes_iou(boxes1, boxes2, cxcywh=False)
+    torch.testing.assert_close(result, expected)
+
+
+@pytest.mark.parametrize(
+    "boxes1, boxes2, expected",
+    [
+        pytest.param(
+            torch.tensor([10, 10, 50, 50]),
+            torch.tensor([10, 10, 50, 50]),
+            torch.tensor([1.0]),
+            id="boxes_ciou_xyxy identical boxes",
+        ),
+        pytest.param(
+            torch.tensor([0, 0, 10, 10]),
+            torch.tensor([10, 0, 20, 10]),
+            # Calculation:
+            #   1. IoU = 0.0
+            #   2. Centers C1=(5,5), C2=(15,5) -> rho^2 = (15-5)^2 + (5-5)^2 = 100
+            #   3. Enclosing Box=(0, 0, 20, 10) -> c^2 = 20^2 + 10^2 = 500
+            #   4. Aspect Ratio AR1=10/10=1, AR2=10/10=1 -> v = 0, alpha * v = 0
+            #   5. CIoU = IoU - (rho^2 / c^2) - alpha * v = 0 - (100 / 500) - 0
+            torch.tensor([0 - 100 / 500 - 0]),
+            id="boxes_ciou_xyxy non-overlapping boxes",
+        ),
+        pytest.param(
+            torch.tensor([0, 0, 10, 10]),
+            torch.tensor([5, 5, 15, 15]),
+            # Calculation:
+            #   1. IoU = 25 / (100 + 100 - 25) = 25 / 175
+            #   2. Centers C1=(5,5), C2=(10,10) -> rho^2 = (10-5)^2 + (10-5)^2 = 50
+            #   3. Enclosing Box=(0, 0, 15, 15) -> c^2 = 15^2 + 15^2 = 450
+            #   4. Aspect Ratio AR1=10/10=1, AR2=10/10=1 -> v = 0, alpha * v = 0
+            #   5. CIoU = IoU - (rho^2 / c^2) - alpha * v = (25/175) - (50/450) - 0
+            torch.tensor([25 / 175 - 50 / 450 - 0]),
+            id="boxes_ciou_xyxy overlapping boxes",
+        ),
+        pytest.param(
+            torch.tensor([[0, 0, 10, 10]]),
+            torch.tensor([[10, 0, 20, 10], [5, 5, 15, 15]]),
+            torch.tensor([[0 - 100 / 500 - 0], [25 / 175 - 50 / 450 - 0]]),
+            id="boxes_ciou_xyxy broadcast (1, 4) & (2, 4)",
+        ),
+    ],
+)
+def test_boxes_ciou_xyxy(boxes1, boxes2, expected):
+    result = boxes_ciou(boxes1, boxes2, cxcywh=False)
     torch.testing.assert_close(result, expected)
