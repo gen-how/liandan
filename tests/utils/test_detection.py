@@ -4,6 +4,30 @@ import torch
 from liandan.utils.detection import boxes_ciou, boxes_iou, ltrb2xyxy, make_anchors
 
 
+def test_make_anchors_arbitary():
+    # fmt: off
+    anchors_expected = torch.tensor(
+        [
+            # 2x2
+            [0.5, 0.5], [1.5, 0.5],
+            [0.5, 1.5], [1.5, 1.5],
+        ],
+        dtype=torch.float32
+    )
+    strides_expected = torch.tensor(
+        [
+            # 2x2
+            [32], [32],
+            [32], [32],
+        ],
+        dtype=torch.float32
+    )
+    # fmt: on
+    anchors_tensor, strides_tensor = make_anchors([torch.zeros(2, 2)], [32])
+    torch.testing.assert_close(anchors_tensor, anchors_expected)
+    torch.testing.assert_close(strides_tensor, strides_expected)
+
+
 def test_make_anchors():
     # Dummy features.
     features = [
