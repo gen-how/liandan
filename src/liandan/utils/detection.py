@@ -45,11 +45,11 @@ def make_anchors(
 def ltrb2xyxy(
     ltrb: torch.Tensor, anchor_points: torch.Tensor, dim: int = -1
 ) -> torch.Tensor:
-    """將錨點對偵測框左上右下距離轉換為偵測框左上與右下座標`(x0, y0, x1, y1)`。
+    """將錨點對偵測框左、上、右、下邊界的距離轉換為偵測框左上與右下座標`(x0, y0, x1, y1)`。
 
     Args:
         ltrb (torch.Tensor):
-            表示錨點與偵測框左、上、右、下距離的張量，形狀為`(..., 4)`。
+            表示錨點與偵測框左、上、右、下邊界距離的張量，形狀為`(..., 4)`。
         anchor_points (torch.Tensor):
             表示錨點座標的張量，形狀為`(..., 2)`。
         dim (int, optional):
@@ -63,6 +63,31 @@ def ltrb2xyxy(
     x0y0 = anchor_points - lt
     x1y1 = anchor_points + rb
     return torch.cat((x0y0, x1y1), dim=dim)
+
+
+def xyxy2ltrb(
+    xyxy: torch.Tensor, anchor_points: torch.Tensor, dim: int = -1
+) -> torch.Tensor:
+    """將偵測框左上與右下座標`(x0, y0, x1, y1)`轉換為錨點對偵測框左、上、右、下邊界的偏差值。
+
+    注意，此函式不會對偏差值進行任何限制，使用者根據實際需求處理。
+
+    Args:
+        xyxy (torch.Tensor):
+            表示偵測框左上與右下座標的張量，形狀為`(..., 4)`。
+        anchor_points (torch.Tensor):
+            表示錨點座標的張量，形狀為`(..., 2)`。
+        dim (int, optional):
+            偵測框距離與錨點座標所在的維度。預設為`-1`表示最後一個維度。
+
+    Returns:
+        out (torch.Tensor):
+            表示錨點與偵測框左、上、右、下邊界的偏差值張量，形狀為`(..., 4)`。
+    """
+    x0y0, x1y1 = xyxy.chunk(2, dim=dim)
+    lt = anchor_points - x0y0
+    rb = x1y1 - anchor_points
+    return torch.cat((lt, rb), dim=dim)
 
 
 def boxes_iou(
