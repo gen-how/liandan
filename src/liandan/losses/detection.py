@@ -452,7 +452,7 @@ class TaskAlignedAssigner(nn.Module):
 
         # Finds every anchor's assigned box index.
         # Shape: (b, nb, na) -> (b, na)
-        target_indices = positive_mask.argmax(dim=-2)
+        target_indices = positive_mask.long().argmax(dim=-2)
         return target_indices, fg_mask.bool(), positive_mask
 
 
