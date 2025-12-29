@@ -1,19 +1,31 @@
-import torch
+from collections.abc import Callable
+from typing import Protocol, Self
 
 
-def get_default_device():
-    """根據作業系統取得預設的加速計算裝置。
+class _Module[**P, R](Protocol):
+    """Protocol allowing us to unwrap `forward` method signatures.
+
+    Reference:
+        - https://github.com/pytorch/pytorch/issues/74746#issuecomment-3597468963
+        - https://github.com/pytorch/pytorch/issues/74746#issuecomment-3600066341
+    """
+
+    def __call__(self: Self, *args: P.args, **kwargs: P.kwargs) -> R: ...
+    def forward(self: Self, *args: P.args, **kwargs: P.kwargs) -> R: ...
+
+
+def typed_module[**P, R](m: _Module[P, R]) -> Callable[P, R]:
+    """回傳提供的模組，並保留型別提示。
+
+    建議只在開發時使用此函式，完成後將其移除避免造成其他人的困惑*。
+
+    Args:
+        m: 欲保留型別提示的`torch.nn.Module`子類別實例。
 
     Returns:
-        out (torch.device): 代表計算裝置的物件。
+        out: 未改變的實例`m`。
     """
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-
-    return torch.device("cpu")
+    return m
 
 
 def unwrap[T](optional: T | None) -> T:
