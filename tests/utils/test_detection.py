@@ -1,7 +1,13 @@
 import pytest
 import torch
 
-from liandan.utils.detection import boxes_ciou, boxes_iou, ltrb2xyxy, make_anchors
+from liandan.utils.detection import (
+    boxes_ciou,
+    boxes_iou,
+    ltrb2xyxy,
+    make_anchors,
+    xyxy2ltrb,
+)
 
 
 def test_make_anchors_arbitary():
@@ -120,6 +126,57 @@ def test_ltrb2xyxy():
     )
     # fmt: on
     result = ltrb2xyxy(ltrb, anchor_points)
+    torch.testing.assert_close(result, expected)
+
+
+def test_xyxy2ltrb():
+    # fmt: off
+    # Dummy anchor points with shape: (4, 2).
+    anchor_points = torch.tensor(
+        [
+            [ 5.0,  5.0],
+            [10.0, 10.0],
+            [15.0, 15.0],
+            [20.0, 20.0],
+        ]
+    )
+    # Dummy xyxy with shape: (2, 4, 4).
+    # Because it comes from network output, there will be a batch dimension.
+    xyxy = torch.tensor(
+        [
+            [
+                [ 4.0,  4.0,  6.0,  6.0],
+                [ 9.0,  9.0, 11.0, 11.0],
+                [14.0, 14.0, 16.0, 16.0],
+                [19.0, 19.0, 21.0, 21.0],
+            ],
+            [
+                [ 3.0,  3.0,  7.0,  7.0],
+                [ 8.0,  8.0, 12.0, 12.0],
+                [13.0, 13.0, 17.0, 17.0],
+                [ 0.0,  0.0,  0.0,  0.0],
+            ],
+        ]
+    )
+    # Expects broadcasted result with shape: (2, 4, 4).
+    expected = torch.tensor(
+        [
+            [
+                [1.0, 1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0, 1.0],
+            ],
+            [
+                [2.0, 2.0, 2.0, 2.0],
+                [2.0, 2.0, 2.0, 2.0],
+                [2.0, 2.0, 2.0, 2.0],
+                [20.0, 20.0, -20.0, -20.0],
+            ],
+        ]
+    )
+    # fmt: on
+    result = xyxy2ltrb(xyxy, anchor_points)
     torch.testing.assert_close(result, expected)
 
 
