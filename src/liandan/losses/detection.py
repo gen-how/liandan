@@ -112,6 +112,7 @@ class YOLOv8DetectionLoss(nn.Module):
                 2. 已填充的偵測框類別張量，形狀為`(batch, num_max_boxes, 1)`。
                 3. 選取實際資料的遮罩張量，形狀為`(batch, num_max_boxes, 1)`。
         """
+        device = self.device
         batch_idx = targets["batch_idx"]
         # The `batch_idx` should be orderly and consecutive, so we can use
         # `unique_consecutive` instead to avoid unnecessary sorting in `unique`.
@@ -119,23 +120,29 @@ class YOLOv8DetectionLoss(nn.Module):
         _, counts = batch_idx.unique_consecutive(return_counts=True)
         batch_size = len(counts)
         max_counts = counts.max().item()
-        gt_boxes = torch.zeros(batch_size, max_counts, 4)
-        gt_classes = torch.zeros(batch_size, max_counts, 1)
-        pos = 0
-        for b in range(batch_size):
-            cnt = counts[b].item()
-            if cnt > 0:
-                gt_boxes[b, :cnt, :] = targets["boxes"][pos : pos + cnt, :]
-                gt_classes[b, :cnt, 0] = targets["classes"][pos : pos + cnt]
-                pos += cnt
-        # The sum of the coordinates of any valid box is always greater than zero.
-        gt_mask = gt_boxes.sum(dim=2, keepdim=True).gt_(0)
-        device = self.device
-        return (
-            gt_boxes.to(device),
-            gt_classes.to(device),
-            gt_mask.to(device, dtype=torch.bool),
+        gt_boxes = torch.zeros(
+            (batch_size, max_counts, 4), dtype=torch.float32, device=device
         )
+        gt_classes = torch.zeros(
+            (batch_size, max_counts, 1), dtype=torch.int64, device=device
+        )
+
+        # Calculates index of each box in image.
+        offsets = torch.cat(
+            (torch.tensor([0], device=device), counts.cumsum(0)[:-1])
+        ).repeat_interleave(counts)
+        box_idx = torch.arange(len(batch_idx), device=device) - offsets
+        # Fills in tensors using advanced indexing.
+        gt_boxes[batch_idx, box_idx, :] = targets["boxes"].float().view(-1, 4)
+        gt_classes[batch_idx, box_idx, :] = targets["classes"].view(-1, 1)
+
+        # Creates mask from counted batch index using broadcasting.
+        # (batch, 1) ──────┐
+        # (1, max_counts) ─┴─> (batch, max_counts) -> (batch, max_counts, 1)
+        padded_idx = torch.arange(max_counts, device=device).unsqueeze(0)
+        gt_mask = (padded_idx < counts.unsqueeze(1)).unsqueeze(-1)
+
+        return (gt_boxes, gt_classes, gt_mask)
 
     def predict_preprocess(self, predict: list[torch.Tensor]):
         """整合多個 Heads 輸出並將偵測框的分類及回歸分佈分開存放。
