@@ -3,12 +3,12 @@ from functools import partial
 import torch
 import torch.nn as nn
 
-from liandan.archs.common import autopad
+from ._utils import autopad
 
 # A BatchNorm2d constructor with the same eps and momentum values as official YOLOv8.
 BatchNorm2d = partial(nn.BatchNorm2d, eps=1e-3, momentum=0.03)
 
-# YOLOv8 model size parameters: (depth gain, channel gain, ratio)
+# YOLOv8 model size parameters: (depth_gain, channel_gain, ratio)
 YOLOV8_PARAMS: dict[str, tuple[float, float, float]] = {
     "n": (1 / 3, 1 / 4, 2.0),
     "s": (1 / 3, 1 / 2, 2.0),
@@ -246,7 +246,7 @@ class YOLOv8(nn.Module):
             return xs
 
         # TODO: Inference path.
-        return []
+        raise NotImplementedError
 
 
 if __name__ == "__main__":
