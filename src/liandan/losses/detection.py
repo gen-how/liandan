@@ -21,8 +21,8 @@ class YOLOv8DetectionLoss(nn.Module):
             reg_max (int, optional): 使用多少個值來表示偵測框回歸分佈。預設為`16`。
         """
         super().__init__()
-        # The strides is defined by the YOLOv8 architecture, and all YOLOv8 variants use
-        # the same strides if I understand correctly.
+        # The strides is defined by the YOLOv8 architecture, and all YOLOv8
+        # variants use the same strides if I understand correctly.
         self.strides = strides
         self.nc = num_classes
         self.reg_max = reg_max
@@ -40,8 +40,8 @@ class YOLOv8DetectionLoss(nn.Module):
 
     @property
     def device(self):
-        # We can borrow the device attribute from any `nn.Buffer` or `nn.Parameter` in
-        # this `nn.Module` to get the device where this module is located.
+        # We can borrow the device attribute from any `nn.Buffer` or `nn.Parameter`
+        # in this `nn.Module` to get the device where this module is located.
         return self.proj.device
 
     def forward(self, predict: list[torch.Tensor], targets: dict[str, torch.Tensor]):
@@ -72,7 +72,7 @@ class YOLOv8DetectionLoss(nn.Module):
         loss[1] = self.bce_loss(pd_scores, target_scores).sum() / target_scores_sum
 
         if fg_mask.any():
-            # Shape: (batch, num_anchors, num_classes) -> (num_foreground, 1)
+            # (batch, num_anchors, num_classes) -> (num_foreground, 1)
             weight = target_scores.sum(dim=-1)[fg_mask].unsqueeze(-1)
 
             # Complete IoU loss.
@@ -181,7 +181,8 @@ class YOLOv8DetectionLoss(nn.Module):
         # (batch_size, num_anchors, reg_max * 4)
         b, a, c = pred_distri.shape
         pred_distri = pred_distri.view(b, a, 4, c // 4).softmax(dim=3)
-        # Distance to left, top, right, bottom. (batch_size, num_anchors, 4)
+        # Distance to left, top, right, bottom.
+        # (batch_size, num_anchors, 4)
         pred_ltrb = torch.matmul(pred_distri, self.proj)
         return ltrb2xyxy(pred_ltrb, anchor_points)
 
@@ -253,31 +254,31 @@ class TaskAlignedAssigner(nn.Module):
                 torch.zeros_like(pd_scores[..., 0]),
             )
 
-        # Shape: (batch, num_max_boxes, num_anchors)
+        # (batch, num_max_boxes, num_anchors)
         anchors_mask = TaskAlignedAssigner.select_anchors_in_gts(
             anchor_tensor, gt_boxes
         )
-        # Shape: (batch, num_max_boxes, num_anchors)
+        # (batch, num_max_boxes, num_anchors)
         align_metric, ious = self._compute_align_metric(
             pd_scores, pd_boxes, gt_classes, gt_boxes, anchors_mask
         )
-        # Shape: (batch, num_max_boxes, num_anchors)
+        # (batch, num_max_boxes, num_anchors)
         topk_mask = self._select_topk_candidates(align_metric, gt_mask)
         positive_mask = anchors_mask & topk_mask
         target_indices, fg_mask, positive_mask = (
             TaskAlignedAssigner.filter_duplicate_assignments(positive_mask, ious)
         )
-        # Shape: (batch, num_anchors, num_classes), (batch, num_anchors, 4)
+        # (batch, num_anchors, num_classes), (batch, num_anchors, 4)
         target_scores, target_boxes = self._gather_targets(
             gt_classes, gt_boxes, target_indices, fg_mask
         )
 
         # Normalizes targets.
         align_metric *= positive_mask
-        # Shape: (batch, num_max_boxes, num_anchors) -> (batch, num_max_boxes, 1)
+        # (batch, num_max_boxes, num_anchors) -> (batch, num_max_boxes, 1)
         max_align_metric = align_metric.amax(dim=-1, keepdim=True)
         max_ious = (ious * positive_mask).amax(dim=-1, keepdim=True)
-        # Shape: (batch, num_max_boxes, num_anchors) -> (batch, num_anchors, 1)
+        # (batch, num_max_boxes, num_anchors) -> (batch, num_anchors, 1)
         norm_align_metric = (
             ((align_metric * max_ious) / (max_align_metric + self.eps))
             .amax(-2)
@@ -300,18 +301,18 @@ class TaskAlignedAssigner(nn.Module):
         num_anchors = pd_boxes.shape[-2]  # na
 
         scores = torch.zeros_like(anchors_mask, dtype=torch.float32)
-        # Shape: (b,) -> (b, 1) -> (b, nb)
+        # (b,) -> (b, 1) -> (b, nb)
         indices_batch = torch.arange(batch).view(-1, 1).expand(-1, num_boxes)
-        # Shape: (b, nb, 1) -> (b, nb)
+        # (b, nb, 1) -> (b, nb)
         indices_class = gt_classes.squeeze(-1)
         # Advanced indexing: (b, na, num_classes) -> (b, nb, na)
         # Extracts and assigns selected: (b, nb, na) -> (num_select,)
         scores[anchors_mask] = pd_scores[indices_batch, :, indices_class][anchors_mask]
 
         ious = torch.zeros_like(anchors_mask, dtype=torch.float32)
-        # Shape: (b, na, 4) -> (b, 1, na, 4) -> (b, nb, na, 4) -> (num_select, 4)
+        # (b, na, 4) -> (b, 1, na, 4) -> (b, nb, na, 4) -> (num_select, 4)
         pd_boxes = pd_boxes.unsqueeze(1).expand(-1, num_boxes, -1, -1)[anchors_mask]
-        # Shape: (b, nb, 4) -> (b, nb, 1, 4) -> (b, nb, na, 4) -> (num_select, 4)
+        # (b, nb, 4) -> (b, nb, 1, 4) -> (b, nb, na, 4) -> (num_select, 4)
         gt_boxes = gt_boxes.unsqueeze(2).expand(-1, -1, num_anchors, -1)[anchors_mask]
         # Assigns (num_select, 1) -> (num_select,)
         ious[anchors_mask] = boxes_ciou(gt_boxes, pd_boxes).squeeze_(-1).clamp_(min=0)
@@ -323,9 +324,9 @@ class TaskAlignedAssigner(nn.Module):
         self, align_metric: torch.Tensor, gt_mask: torch.Tensor
     ):
         """選取每個真實標註框的前`topk`個對齊指標最高的預測框。"""
-        # Shape: (batch, num_boxes, topk)
+        # (batch, num_boxes, topk)
         _, topk_indices = torch.topk(align_metric, self.topk, dim=-1)
-        # Shape: (batch, num_boxes, 1) -> (batch, num_boxes, topk)
+        # (batch, num_boxes, 1) -> (batch, num_boxes, topk)
         topk_mask = gt_mask.expand(-1, -1, self.topk)
         # Filters out dummy boxes.
         topk_indices.masked_fill_(~topk_mask, 0)
@@ -338,7 +339,7 @@ class TaskAlignedAssigner(nn.Module):
         # If any position is selected multiple times, it means it is a filtered
         # dummy boxes. Because we filtered `topk_indices` earlier.
         counts.masked_fill_(counts > 1, 0)
-        # Shape: (batch, num_boxes, num_anchors)
+        # (batch, num_boxes, num_anchors)
         return counts.bool()
 
     def _gather_targets(
@@ -352,18 +353,18 @@ class TaskAlignedAssigner(nn.Module):
         # Transforms `target_indices` to flattened indices for advanced indexing.
         batch, num_boxes = gt_boxes.shape[:2]  # b, nb
         num_anchors = target_indices.shape[1]  # na
-        # Shape: (b,) -> (b, 1)
+        # (b,) -> (b, 1)
         batch_indices = torch.arange(batch, device=target_indices.device).unsqueeze_(-1)
         # Adds an offset from the batch index to obtain flattened indices while
         # keeping the same shape: (b, na).
         target_indices = target_indices + batch_indices * num_boxes
 
         # Gathers target boxes according to flattened indices.
-        # Shape: (b, nb, 4) -> (b * nb, 4) -> (b, na, 4)
+        # (b, nb, 4) -> (b * nb, 4) -> (b, na, 4)
         target_boxes = gt_boxes.view(-1, 4)[target_indices]
 
         # Gathers target classes according to flattened indices.
-        # Shape: (b, nb, 1) -> (b * nb, 1) -> (b, na, 1)
+        # (b, nb, 1) -> (b * nb, 1) -> (b, na, 1)
         target_classes = gt_classes.view(-1, 1)[target_indices]
         # Sometimes the negative samples are marked as -1.
         target_classes.clamp_(0)
@@ -403,16 +404,16 @@ class TaskAlignedAssigner(nn.Module):
         batch_size, num_boxes = gt_boxes.shape[:2]  # b, nb
 
         # Top-left points and bottom-right points.
-        # Shape: (b, nb, 4) -> (b * nb, 1, 4) ─┬─> (b * nb, 1, 2)
-        #                                      └─> (b * nb, 1, 2)
+        # (b, nb, 4) -> (b * nb, 1, 4) ─┬─> (b * nb, 1, 2)
+        #                               └─> (b * nb, 1, 2)
         lt, rb = gt_boxes.view(-1, 1, 4).chunk(2, dim=2)
-        # Shape: (na, 2) -> (1, na, 2).
+        # (na, 2) -> (1, na, 2).
         anchors = anchors.view(1, -1, 2)
         # These shapes are meant to satisfy broadcast semantics.
         # Ref: https://docs.pytorch.org/docs/stable/notes/broadcasting.html
         # Distances from anchor points to the four sides of ground truth boxes.
-        # Shape: (b * nb, na, 2) ─┐
-        #        (b * nb, na, 2) ─┴─> (b * nb, na, 4) -> (b, nb, na, 4)
+        # (b * nb, na, 2) ─┐
+        # (b * nb, na, 2) ─┴─> (b * nb, na, 4) -> (b, nb, na, 4)
         bbox_deltas = torch.cat((anchors - lt, rb - anchors), dim=2)
         bbox_deltas = bbox_deltas.view(batch_size, num_boxes, num_anchors, 4)
         # An anchor point is inside a ground truth box if all of its distances to the
@@ -440,16 +441,16 @@ class TaskAlignedAssigner(nn.Module):
         """
         # Assumes b=batch, nb=num_boxes, na=num_anchors in the fllowing comments.
         # Merges all boxes' masks to get foreground masks.
-        # Shape: (b, nb, na) -> (b, na)
+        # (b, nb, na) -> (b, na)
         fg_mask = positive_mask.sum(dim=-2)
         if fg_mask.max() > 1:
             # At least one anchor is assigned to multiple ground truth boxes.
             num_boxes = positive_mask.shape[1]
             # Finds anchors with duplicate assignments.
-            # Shape: (b, na) -> (b, 1, na) -> (b, nb, na)
+            # (b, na) -> (b, 1, na) -> (b, nb, na)
             duplicate_mask = fg_mask.unsqueeze(1).gt(1).expand(-1, num_boxes, -1)
             # Finds the indices of boxes that have max IoU for each anchor.
-            # Shape: (b, nb, na) -> (b, 1, na)
+            # (b, nb, na) -> (b, 1, na)
             max_iou_indices = ious.argmax(dim=1, keepdim=True)
             max_iou_mask = torch.zeros_like(positive_mask)
             max_iou_mask.scatter_(dim=1, index=max_iou_indices, value=True)
@@ -458,7 +459,7 @@ class TaskAlignedAssigner(nn.Module):
             fg_mask = positive_mask.sum(dim=-2)
 
         # Finds every anchor's assigned box index.
-        # Shape: (b, nb, na) -> (b, na)
+        # (b, nb, na) -> (b, na)
         target_indices = positive_mask.long().argmax(dim=-2)
         return target_indices, fg_mask.bool(), positive_mask
 
@@ -479,7 +480,7 @@ class DistributionFocalLoss(nn.Module):
         tu = tl + 1
         wl = tu - target
         wu = 1 - wl
-        # Shape: (batch, num_anchors, reg_max * 4) -> (batch * num_anchors * 4, reg_max)
+        # (batch, num_anchors, reg_max * 4) -> (batch * num_anchors * 4, reg_max)
         pd_dist = pred_distri.view(-1, self.reg_max)
         cl = F.cross_entropy(pd_dist, tl.view(-1), reduction="none").view(tl.shape)
         cu = F.cross_entropy(pd_dist, tu.view(-1), reduction="none").view(tu.shape)
