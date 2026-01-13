@@ -220,6 +220,69 @@ class Heads(nn.Module):
         return xs
 
 
+class DFLConv(nn.Module):
+    """以卷積層實現將 Distribution Focal Loss 訓練的模型輸出轉換為邊界框距離的模組。
+
+    Ref: https://github.com/ultralytics/ultralytics/blob/main/ultralytics/nn/modules/block.py#L58
+    """
+
+    def __init__(self, reg_max: int = 16) -> None:
+        super().__init__()
+        self.reg_max = reg_max
+        self.conv = nn.Conv2d(reg_max, 1, 1, bias=False)
+        self.conv.weight.requires_grad = False
+        with torch.no_grad():
+            x = torch.arange(reg_max, dtype=torch.float32)
+            self.conv.weight.copy_(x.view(1, reg_max, 1, 1))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """執行轉換。
+
+        Args:
+            x (torch.Tensor):
+                將被轉換的張量，形狀為`(batch, reg_max * 4, num_anchors)`。
+
+        Returns:
+            out (torch.Tensor):
+                轉換後的張量，形狀為`(batch, num_anchors, 4)`。
+        """
+        b, _, na = x.shape
+        # (b, 4 * reg_max, na) -> (b, 4, reg_max, na) -> (b, reg_max, 4, na)
+        x = x.view(b, 4, self.reg_max, na).transpose(2, 1).softmax(dim=1)
+        # (b, 1, 4, na) -> (b, 4, na) -> (b, na, 4)
+        return self.conv(x).view(b, 4, na).transpose(2, 1)
+
+
+class DFLLinear(nn.Module):
+    """以全連接層實現將 Distribution Focal Loss 訓練的模型輸出轉換為邊界框距離的模組。"""
+
+    def __init__(self, reg_max: int = 16) -> None:
+        super().__init__()
+        self.reg_max = reg_max
+        self.fc = nn.Linear(reg_max, 1, bias=False)
+        self.fc.weight.requires_grad = False
+        with torch.no_grad():
+            x = torch.arange(reg_max, dtype=torch.float32)
+            self.fc.weight.copy_(x.view(1, reg_max))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """執行轉換。
+
+        Args:
+            x (torch.Tensor):
+                將被轉換的張量，形狀為`(batch, reg_max * 4, num_anchors)`。
+
+        Returns:
+            out (torch.Tensor):
+                轉換後的張量，形狀為`(batch, num_anchors, 4)`。
+        """
+        b, _, na = x.shape
+        # (b, 4 * reg_max, na) -> (b, na, 4 * reg_max) -> (b, na, 4, reg_max)
+        x = x.transpose(2, 1).view(b, na, 4, self.reg_max).softmax(dim=3)
+        # (b, na, 4, 1) -> (b, na, 4)
+        return self.fc(x).squeeze_(-1)
+
+
 class YOLOv8(nn.Module):
     def __init__(
         self,
