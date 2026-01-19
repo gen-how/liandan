@@ -37,7 +37,7 @@ def test_make_anchors_arbitary():
 def test_make_anchors():
     # Dummy features.
     features = [
-        torch.zeros(1, 3, 3, 4),
+        torch.zeros(1, 3, 4, 4),
         torch.zeros(1, 3, 2, 2),
         torch.zeros(1, 3, 1, 1),
     ]
@@ -45,10 +45,11 @@ def test_make_anchors():
     # fmt: off
     anchors_expected = torch.tensor(
         [
-            # 3x4
+            # 4x4
             [0.5, 0.5], [1.5, 0.5], [2.5, 0.5], [3.5, 0.5],
             [0.5, 1.5], [1.5, 1.5], [2.5, 1.5], [3.5, 1.5],
             [0.5, 2.5], [1.5, 2.5], [2.5, 2.5], [3.5, 2.5],
+            [0.5, 3.5], [1.5, 3.5], [2.5, 3.5], [3.5, 3.5],
             # 2x2
             [0.5, 0.5], [1.5, 0.5],
             [0.5, 1.5], [1.5, 1.5],
@@ -59,7 +60,8 @@ def test_make_anchors():
     )
     strides_expected = torch.tensor(
         [
-            # 4x3
+            # 4x4
+            [8], [8], [8], [8],
             [8], [8], [8], [8],
             [8], [8], [8], [8],
             [8], [8], [8], [8],
