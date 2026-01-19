@@ -5,7 +5,7 @@ from typing import Protocol, Self
 class _Module[**P, R](Protocol):
     """Protocol allowing us to unwrap `forward` method signatures.
 
-    Reference:
+    Ref:
         - https://github.com/pytorch/pytorch/issues/74746#issuecomment-3597468963
         - https://github.com/pytorch/pytorch/issues/74746#issuecomment-3600066341
     """

@@ -1,6 +1,6 @@
 import pytest
 
-from liandan.archs.common import as_pair, autopad
+from liandan.models._utils import as_pair, autopad
 
 
 @pytest.mark.parametrize(
