@@ -49,16 +49,17 @@ def ltrb2xyxy(
 
     Args:
         ltrb (torch.Tensor):
-            表示錨點與偵測框左、上、右、下邊界距離的張量，形狀為`(..., 4)`。
+            表示錨點與偵測框左、上、右、下邊界距離的張量。
         anchor_points (torch.Tensor):
-            表示錨點座標的張量，形狀為`(..., 2)`。
+            表示錨點座標的張量，座標維度及錨點維度順序需與`ltrb`相同。
         dim (int, optional):
             偵測框距離與錨點座標所在的維度。預設為`-1`表示最後一個維度。
 
     Returns:
         out (torch.Tensor):
-            表示偵測框左上與右下座標的張量，形狀為`(..., 4)`。
+            表示偵測框左上與右下座標的張量。
     """
+    assert ltrb.shape[dim] == 4, "Distances must have size 4 (l, t, r, b)"
     lt, rb = ltrb.chunk(2, dim=dim)
     x0y0 = anchor_points - lt
     x1y1 = anchor_points + rb

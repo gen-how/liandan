@@ -79,55 +79,85 @@ def test_make_anchors():
     torch.testing.assert_close(strides_tensor, strides_expected)
 
 
-def test_ltrb2xyxy():
-    # fmt: off
-    # Dummy anchor points with shape: (4, 2).
-    anchor_points = torch.tensor(
-        [
-            [ 5.0,  5.0],
-            [10.0, 10.0],
-            [15.0, 15.0],
-            [20.0, 20.0],
-        ]
-    )
-    # Dummy ltrb with shape: (2, 4, 4).
+def test_ltrb2xyxy_channel_last():
+    # Dummy anchor point with shape: (3, 2).
+    anchor_points = torch.tensor([[10.0, 10.0], [10.0, 10.0], [10.0, 10.0]])
+    # Dummy ltrb with shape: (2, 3, 4).
     # Because it comes from network output, there will be a batch dimension.
     ltrb = torch.tensor(
         [
             [
-                [1.0, 1.0, 1.0, 1.0],
-                [1.0, 1.0, 1.0, 1.0],
-                [1.0, 1.0, 1.0, 1.0],
-                [1.0, 1.0, 1.0, 1.0],
+                [1.0, 2.0, 3.0, 4.0],
+                [1.0, 2.0, 3.0, 4.0],
+                [1.0, 2.0, 3.0, 4.0],
             ],
             [
-                [2.0, 2.0, 2.0, 2.0],
-                [2.0, 2.0, 2.0, 2.0],
-                [2.0, 2.0, 2.0, 2.0],
-                [2.0, 2.0, 2.0, 2.0],
+                [5.0, 6.0, 7.0, 8.0],
+                [5.0, 6.0, 7.0, 8.0],
+                [5.0, 6.0, 7.0, 8.0],
             ],
         ]
     )
 
-    # Expects broadcasted result with shape: (2, 4, 4).
+    # Expects broadcasted result with shape: (2, 3, 4).
     expected = torch.tensor(
         [
             [
-                [ 4.0,  4.0,  6.0,  6.0],
-                [ 9.0,  9.0, 11.0, 11.0],
-                [14.0, 14.0, 16.0, 16.0],
-                [19.0, 19.0, 21.0, 21.0],
+                [9.0, 8.0, 13.0, 14.0],
+                [9.0, 8.0, 13.0, 14.0],
+                [9.0, 8.0, 13.0, 14.0],
             ],
             [
-                [ 3.0,  3.0,  7.0,  7.0],
-                [ 8.0,  8.0, 12.0, 12.0],
-                [13.0, 13.0, 17.0, 17.0],
-                [18.0, 18.0, 22.0, 22.0],
+                [5.0, 4.0, 17.0, 18.0],
+                [5.0, 4.0, 17.0, 18.0],
+                [5.0, 4.0, 17.0, 18.0],
             ],
         ]
     )
-    # fmt: on
-    result = ltrb2xyxy(ltrb, anchor_points)
+    result = ltrb2xyxy(ltrb, anchor_points, dim=-1)
+    torch.testing.assert_close(result, expected)
+
+
+def test_ltrb2xyxy_channel_first():
+    # Dummy anchor point with shape: (3, 2).
+    anchor_points = torch.tensor([[10.0, 10.0], [10.0, 10.0], [10.0, 10.0]])
+    # Dummy ltrb with shape: (2, 4, 3).
+    # Because it comes from network output, there will be a batch dimension.
+    ltrb = torch.tensor(
+        [
+            [
+                [1.0, 1.0, 1.0],
+                [2.0, 2.0, 2.0],
+                [3.0, 3.0, 3.0],
+                [4.0, 4.0, 4.0],
+            ],
+            [
+                [5.0, 5.0, 5.0],
+                [6.0, 6.0, 6.0],
+                [7.0, 7.0, 7.0],
+                [8.0, 8.0, 8.0],
+            ],
+        ]
+    )
+    expected = torch.tensor(
+        [
+            [
+                [9.0, 9.0, 9.0],
+                [8.0, 8.0, 8.0],
+                [13.0, 13.0, 13.0],
+                [14.0, 14.0, 14.0],
+            ],
+            [
+                [5.0, 5.0, 5.0],
+                [4.0, 4.0, 4.0],
+                [17.0, 17.0, 17.0],
+                [18.0, 18.0, 18.0],
+            ],
+        ]
+    )
+    with pytest.raises(RuntimeError):
+        result = ltrb2xyxy(ltrb, anchor_points, dim=1)
+    result = ltrb2xyxy(ltrb, anchor_points.T, dim=1)
     torch.testing.assert_close(result, expected)
 
 
