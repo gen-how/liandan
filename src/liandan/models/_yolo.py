@@ -3,6 +3,7 @@ from functools import partial
 import torch
 import torch.nn as nn
 
+from ..utils.detection import ltrb2xyxy, make_anchors
 from ._utils import autopad
 
 # A BatchNorm2d constructor with the same eps and momentum values as official YOLOv8.
@@ -221,7 +222,7 @@ class Heads(nn.Module):
 
 
 class DFLConv(nn.Module):
-    """以卷積層實現將 Distribution Focal Loss 訓練的模型輸出轉換為邊界框距離的模組。
+    """以卷積層實現將 DFL 訓練的模型輸出轉換為邊界框距離的模組。
 
     Ref: https://github.com/ultralytics/ultralytics/blob/main/ultralytics/nn/modules/block.py#L58
     """
@@ -244,17 +245,17 @@ class DFLConv(nn.Module):
 
         Returns:
             out (torch.Tensor):
-                轉換後的張量，形狀為`(batch, num_anchors, 4)`。
+                轉換後的張量，形狀為`(batch, 4, num_anchors)`。
         """
         b, _, na = x.shape
-        # (b, 4 * reg_max, na) -> (b, 4, reg_max, na) -> (b, reg_max, 4, na)
+        # (b, reg_max * 4, na) -> (b, 4, reg_max, na) -> (b, reg_max, 4, na)
         x = x.view(b, 4, self.reg_max, na).transpose(2, 1).softmax(dim=1)
-        # (b, 1, 4, na) -> (b, 4, na) -> (b, na, 4)
-        return self.conv(x).view(b, 4, na).transpose(2, 1)
+        # (b, 1, 4, na) -> (b, 4, na)
+        return self.conv(x).view(b, 4, na)
 
 
 class DFLLinear(nn.Module):
-    """以全連接層實現將 Distribution Focal Loss 訓練的模型輸出轉換為邊界框距離的模組。"""
+    """以全連接層實現將 DFL 訓練的模型輸出轉換為邊界框距離的模組。"""
 
     def __init__(self, reg_max: int = 16) -> None:
         super().__init__()
@@ -302,14 +303,41 @@ class YOLOv8(nn.Module):
         self.backbone = Backbone(version)
         self.neck = Neck(version)
         self.heads = Heads(version, num_classes, reg_max)
+        self.dfl = DFLConv(reg_max)
+        self._nr = reg_max * 4
+        self._nc = self._nr + num_classes
+        self._anchor_tensor = None
+        self._stride_tensor = None
 
-    def forward(self, x: torch.Tensor) -> list[torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> list[torch.Tensor] | torch.Tensor:
+        """Forward pass.
+
+        Args:
+            x (torch.Tensor):
+                輸入影像張量。
+
+        Returns:
+            out (list[torch.Tensor] | torch.Tensor):
+                訓練模式下回傳多個偵測頭的輸出張量列表，推理模式下回傳輸入圖片尺度的邊界框張量。
+                形狀為`(batch, num_anchors, 6)`，邊界框格式`(x0, y0, x1, y1, score, class)`。
+        """
         xs = self.heads(self.neck(self.backbone(x)))
         if self.training:
             return xs
 
-        # TODO: Inference path.
-        raise NotImplementedError
+        # Inference branch.
+        batch = x.shape[0]
+        if (self._anchor_tensor is None) or (self._stride_tensor is None):
+            self._anchor_tensor, self._stride_tensor = make_anchors(xs, self.strides)
+        preds = torch.cat([x.view(batch, self._nc, -1) for x in xs], dim=2)
+        distri, scores = torch.split(preds, [self._nr, self.num_classes], dim=1)
+        ltrb = self.dfl(distri)
+        xyxy = ltrb2xyxy(ltrb, self._anchor_tensor.T, dim=1) * self._stride_tensor.T
+        values, indices = torch.max(scores, dim=1, keepdim=True)
+        confs = values.sigmoid_()
+        classes = indices.float()
+        boxes = torch.cat((xyxy, confs, classes), dim=1).permute(0, 2, 1).contiguous()
+        return boxes
 
 
 if __name__ == "__main__":
