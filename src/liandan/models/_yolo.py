@@ -338,14 +338,3 @@ class YOLOv8(nn.Module):
         classes = indices.float()
         boxes = torch.cat((xyxy, confs, classes), dim=1).permute(0, 2, 1).contiguous()
         return boxes
-
-
-if __name__ == "__main__":
-    img_size = (640, 640)
-    x = torch.zeros((1, 3, img_size[1], img_size[0]), dtype=torch.float32)
-    model = YOLOv8(version="n", img_size=img_size)
-    print(model)
-    ys = model(x)
-    for i, y in enumerate(ys):
-        print(f"Head {i} shape = {y.shape}")
-    print(f"Total parameters: {sum(p.numel() for p in model.parameters()):,}")
