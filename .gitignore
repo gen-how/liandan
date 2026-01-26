@@ -12,3 +12,6 @@ wheels/
 # OS cache
 .DS_Store
 Thumbs.db
+
+# Git worktrees
+.worktrees/
