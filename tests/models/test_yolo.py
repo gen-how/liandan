@@ -32,7 +32,7 @@ class TestDFLConv:
     def test_forward(self, obj, dummy_input):
         output = obj(dummy_input)
         b, _, na = dummy_input.shape
-        expected = torch.full((b, na, 4), 15.0, dtype=torch.float32)
+        expected = torch.full((b, 4, na), 15.0, dtype=torch.float32)
         torch.testing.assert_close(output, expected, rtol=1e-5, atol=1e-5)
 
 
