@@ -58,7 +58,7 @@ def ltrb2xyxy(
     Returns:
         out (torch.Tensor):
             表示偵測框左上與右下座標的張量。
-    """
+    """  # noqa: E501
     assert ltrb.shape[dim] == 4, "Distances must have size 4 (l, t, r, b)"
     lt, rb = ltrb.chunk(2, dim=dim)
     x0y0 = anchor_points - lt
@@ -71,7 +71,7 @@ def xyxy2ltrb(
 ) -> torch.Tensor:
     """將偵測框左上與右下座標`(x0, y0, x1, y1)`轉換為錨點對偵測框左、上、右、下邊界的偏差值。
 
-    注意，此函式不會對偏差值進行任何限制，使用者根據實際需求處理。
+    注意：此函式不會對偏差值進行任何限制，使用者根據實際需求處理。
 
     Args:
         xyxy (torch.Tensor):
@@ -84,7 +84,7 @@ def xyxy2ltrb(
     Returns:
         out (torch.Tensor):
             表示錨點與偵測框左、上、右、下邊界的偏差值張量，形狀為`(..., 4)`。
-    """
+    """  # noqa: E501
     x0y0, x1y1 = xyxy.chunk(2, dim=dim)
     lt = anchor_points - x0y0
     rb = x1y1 - anchor_points
@@ -105,8 +105,9 @@ def boxes_iou(
         計算`N`個偵測框與單一偵測框之間的 IoU，輸出為`(N, 1)`。
     3. `(N, 4)` & `(N, 4)`：
         計算`N`個偵測框兩兩之間的 IoU，輸出為`(N, 1)`。
-    4. `(N, 1, 4)` & `(1, M, 4)`：
-        計算`N`個偵測框與`M`個偵測框之間的 IoU，輸出為`(N, M, 1)`。
+
+    注意：另一種常見場景是`(..., N, 4)` & `(..., M, 4)`用於計算所有`N × M`種排列下的 IoU。
+    雖然此函式可以由使用者自行將輸入形狀設為`(..., N, 1, 4)` & `(..., 1, M, 4)`來達成，但這不是此函式的本意且效率不佳，此種使用場景建議改用`torchvision.ops.box_iou`。
 
     Args:
         boxes1 (torch.Tensor):
@@ -122,15 +123,15 @@ def boxes_iou(
     Returns:
         out (torch.Tensor):
             表示 IoU 值的張量。
-    """
+    """  # noqa: E501
     if cxcywh:
         # fmt: off
         b1_cx, b1_cy, b1_w, b1_h = boxes1.chunk(4, dim=-1)
         b2_cx, b2_cy, b2_w, b2_h = boxes2.chunk(4, dim=-1)
         b1_w2, b1_h2 = b1_w / 2, b1_h / 2
         b2_w2, b2_h2 = b2_w / 2, b2_h / 2
-        b1_x0, b1_y0, b1_x1, b1_y1 = b1_cx - b1_w2, b1_cy - b1_h2, b1_cx + b1_w2, b1_cy + b1_h2
-        b2_x0, b2_y0, b2_x1, b2_y1 = b2_cx - b2_w2, b2_cy - b2_h2, b2_cx + b2_w2, b2_cy + b2_h2
+        b1_x0, b1_y0, b1_x1, b1_y1 = b1_cx - b1_w2, b1_cy - b1_h2, b1_cx + b1_w2, b1_cy + b1_h2  # noqa: E501
+        b2_x0, b2_y0, b2_x1, b2_y1 = b2_cx - b2_w2, b2_cy - b2_h2, b2_cx + b2_w2, b2_cy + b2_h2  # noqa: E501
         # fmt: on
     else:
         b1_x0, b1_y0, b1_x1, b1_y1 = boxes1.chunk(4, dim=-1)
@@ -156,8 +157,8 @@ def boxes_ciou(
         b2_cx, b2_cy, b2_w, b2_h = boxes2.chunk(4, dim=-1)
         b1_w2, b1_h2 = b1_w / 2, b1_h / 2
         b2_w2, b2_h2 = b2_w / 2, b2_h / 2
-        b1_x0, b1_y0, b1_x1, b1_y1 = b1_cx - b1_w2, b1_cy - b1_h2, b1_cx + b1_w2, b1_cy + b1_h2
-        b2_x0, b2_y0, b2_x1, b2_y1 = b2_cx - b2_w2, b2_cy - b2_h2, b2_cx + b2_w2, b2_cy + b2_h2
+        b1_x0, b1_y0, b1_x1, b1_y1 = b1_cx - b1_w2, b1_cy - b1_h2, b1_cx + b1_w2, b1_cy + b1_h2  # noqa: E501
+        b2_x0, b2_y0, b2_x1, b2_y1 = b2_cx - b2_w2, b2_cy - b2_h2, b2_cx + b2_w2, b2_cy + b2_h2  # noqa: E501
         # fmt: on
     else:
         b1_x0, b1_y0, b1_x1, b1_y1 = boxes1.chunk(4, dim=-1)
@@ -205,7 +206,7 @@ def cxcywh2xyxy(
     Returns:
         out (torch.Tensor):
             轉換後的偵測框張量，形狀為`(..., 4)`。
-    """
+    """  # noqa: E501
     cx, cy, w, h = boxes.chunk(4, dim=-1)
     w_, h_ = w / 2, h / 2
     x0, y0 = cx - w_, cy - h_
