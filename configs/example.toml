@@ -1,0 +1,83 @@
+[model]
+module.name = "YOLOv8"
+module.path = "liandan.models"
+module.args.version = "n"
+module.args.num_classes = 1
+module.args.img_size = [256, 256]
+
+[optimizer]
+module.name = "AdamW"
+module.path = "torch.optim"
+module.args.lr = 0.01
+module.args.weight_decay = 0.0005
+
+[loss_fn]
+module.name = "YOLOv8DetectionLoss"
+module.path = "liandan.losses.detection"
+module.args.strides = "$model.strides"
+module.args.num_classes = "$model.num_classes"
+module.args.reg_max = "$model.reg_max"
+
+[trainer]
+max_epochs = 10
+
+[[trainer.logger]]
+module.name = "CSVLogger"
+module.path = "lightning.pytorch.loggers"
+module.args.save_dir = "./experiments"
+module.args.name = "banana-detection"
+module.args.version = "v0"
+
+[[trainer.callbacks]]
+module.name = "LossCallback"
+module.path = "liandan.train"
+
+[[trainer.callbacks]]
+module.name = "MAPCallback"
+module.path = "liandan.train"
+
+[metrics.map]
+module.name = "MeanAveragePrecision"
+module.path = "torchmetrics.detection"
+module.args.box_format = "xyxy"
+module.args.iou_type = "bbox"
+
+[dataset]
+batch_size = 8
+num_workers = 4
+
+[dataset.train]
+module.name = "BananaDetection"
+module.path = "liandan.data"
+module.args.root = "./datasets/banana-detection"
+module.args.split = "train"
+
+[[dataset.train.transforms]]
+module.name = "ToDtype"
+module.path = "torchvision.transforms.v2"
+module.args.dtype = "$torch.float32"
+module.args.scale = true
+
+[[dataset.train.transforms]]
+module.name = "Normalize"
+module.path = "torchvision.transforms.v2"
+module.args.mean = [0.5, 0.5, 0.5]
+module.args.std = [0.5, 0.5, 0.5]
+
+[dataset.validate]
+module.name = "BananaDetection"
+module.path = "liandan.data"
+module.args.root = "./datasets/banana-detection"
+module.args.split = "valid"
+
+[[dataset.validate.transforms]]
+module.name = "ToDtype"
+module.path = "torchvision.transforms.v2"
+module.args.dtype = "$torch.float32"
+module.args.scale = true
+
+[[dataset.validate.transforms]]
+module.name = "Normalize"
+module.path = "torchvision.transforms.v2"
+module.args.mean = [0.5, 0.5, 0.5]
+module.args.std = [0.5, 0.5, 0.5]
