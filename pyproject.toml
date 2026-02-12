@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
-liandan-cli = "liandan.train:cli"
+liandan-train = "liandan.train:main"
 
 [build-system]
 requires = ["uv_build>=0.8.22,<0.9.0"]
