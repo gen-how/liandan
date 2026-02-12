@@ -147,9 +147,13 @@ class YOLOv8DetectionLoss(nn.Module):
     def predict_preprocess(self, predict: list[torch.Tensor]):
         """整合多個 Heads 輸出並將偵測框的分類及回歸分佈分開存放。
 
-        神經網路的每個 Head 輸出`(batch, C, H, W)`，其中`C = reg_max * 4 + num_classes`。
+        神經網路的每個 Head 輸出`(batch, C, H, W)`其中`C = reg_max * 4 + num_classes`。
+
         假設輸入 640x640 影像，總共 80 類，則 3 個 Head 的輸出分別為：
-        `(batch, 144, 80, 80)`, `(batch, 144, 40, 40)`, `(batch, 144, 20, 20)`。
+            1. `(batch, 144, 80, 80)`
+            2. `(batch, 144, 40, 40)`
+            3. `(batch, 144, 20, 20)`
+
         此函式將這些輸出整理成`(batch, 8400, 80)`的分類和`(batch, 8400, 64)`的回歸分佈。
 
         Args:
