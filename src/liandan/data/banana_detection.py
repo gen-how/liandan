@@ -1,4 +1,5 @@
 import csv
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal
 
@@ -23,7 +24,7 @@ class BananaDetection(torch.utils.data.Dataset):
         self,
         root: str | Path,
         split: Literal["train", "valid"],
-        transform=None,
+        transform: Callable | None = None,
         download=False,
     ):
         """根據`split`載入不同部分的香蕉檢測資料集。
@@ -31,7 +32,7 @@ class BananaDetection(torch.utils.data.Dataset):
         Args:
             root (str | Path): 資料集的根目錄。
             split (str): 選擇載入哪一部分的資料集，必需是`"train"`或`"valid"`。
-            transform (callable, optional): 資料轉換函數，預設值為`None`。
+            transform (Callable, optional): 資料轉換函數，預設值為`None`。
             download (bool, optional): 是否下載並解壓資料集，預設值為`False`。
         """
         self.root = Path(root).expanduser()

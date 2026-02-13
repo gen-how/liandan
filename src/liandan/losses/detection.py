@@ -90,7 +90,7 @@ class YOLOv8DetectionLoss(nn.Module):
         loss[1] *= self.gain["cls"]
         loss[2] *= self.gain["dfl"]
         batch_size = pd_scores.shape[0]
-        return loss * batch_size, loss.detach()
+        return loss * batch_size
 
     def targets_preprocess(self, targets: dict[str, torch.Tensor]):
         """預處理訓練資料標註。

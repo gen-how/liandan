@@ -1,0 +1,23 @@
+[model]
+version = "n"
+num_classes = 1
+reg_max = 16
+img_size = [256, 256]
+score_threshold = 0.05
+
+[optimizer]
+lr = 0.01
+weight_decay = 0.0005
+
+[dataset]
+root = "./datasets/banana-detection"
+batch_size = 8
+num_workers = 4
+download = false
+
+[trainer]
+max_epochs = 20
+
+[runtime]
+seed = 42
+deterministic = true
