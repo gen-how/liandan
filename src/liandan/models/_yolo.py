@@ -224,7 +224,8 @@ class Heads(nn.Module):
 class DFLConv(nn.Module):
     """以卷積層實現將 DFL 訓練的模型輸出轉換為邊界框距離的模組。
 
-    Ref: https://github.com/ultralytics/ultralytics/blob/main/ultralytics/nn/modules/block.py#L58
+    References:
+        - https://github.com/ultralytics/ultralytics/blob/main/ultralytics/nn/modules/block.py#L58
     """
 
     def __init__(self, reg_max: int = 16) -> None:

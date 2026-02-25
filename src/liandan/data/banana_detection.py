@@ -13,9 +13,8 @@ from liandan.utils.data import calculate_md5, download_file, extract_zip
 class BananaDetection(torch.utils.data.Dataset):
     """香蕉檢測資料集。
 
-    此資料集用於訓練香蕉檢測模型，包含訓練集與驗證集兩個部分。
-    此資料集取自李沐博士的教學系列影片 [41 物体检测和数据集【动手学深度学习v2】](https://www.bilibili.com/video/BV1Lh411Y7LX/?p=3)。
-    """
+    此資料集用於訓練香蕉檢測模型，包含訓練集與驗證集兩個部分，取自李沐博士的教學系列影片 [41 物体检测和数据集【动手学深度学习v2】](https://www.bilibili.com/video/BV1Lh411Y7LX/?p=3)。
+    """  # noqa: E501
 
     MIRRORS = ("http://d2l-data.s3-accelerate.amazonaws.com/",)
     RESOURCES = (("banana-detection.zip", "191823bdb3e62ff13738cc27fa5ee5dd"),)
