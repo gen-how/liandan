@@ -102,6 +102,7 @@ class YOLOv8DetectionLoss(nn.Module):
 
         Args:
             targets (dict[str, torch.Tensor]): 包含以下鍵值對的字典：
+                - "images": 輸入圖片張量，僅用來推導批次大小。
                 - "batch_idx": 偵測框所屬的批次索引張量。
                 - "boxes": 偵測框張量。
                 - "classes": 偵測框類別張量。
@@ -113,12 +114,12 @@ class YOLOv8DetectionLoss(nn.Module):
                 3. 選取實際資料的遮罩張量，形狀為`(batch, num_max_boxes, 1)`。
         """
         device = self.device
+        batch_size = targets["images"].shape[0]
         batch_idx = targets["batch_idx"]
         # The `batch_idx` should be orderly and consecutive, so we can use
         # `unique_consecutive` instead to avoid unnecessary sorting in `unique`.
         # Ref: https://docs.pytorch.org/docs/stable/generated/torch.unique.html
-        _, counts = batch_idx.unique_consecutive(return_counts=True)
-        batch_size = len(counts)
+        unique_idx, counts = batch_idx.unique_consecutive(return_counts=True)
         max_counts = counts.max().item()
         gt_boxes = torch.zeros(
             (batch_size, max_counts, 4), dtype=torch.float32, device=device
@@ -131,16 +132,21 @@ class YOLOv8DetectionLoss(nn.Module):
         offsets = torch.cat(
             (torch.tensor([0], device=device), counts.cumsum(0)[:-1])
         ).repeat_interleave(counts)
-        box_idx = torch.arange(len(batch_idx), device=device) - offsets
+        box_idx = torch.arange(batch_idx.shape[0], device=device) - offsets
         # Fills in tensors using advanced indexing.
         gt_boxes[batch_idx, box_idx, :] = targets["boxes"].float().view(-1, 4)
         gt_classes[batch_idx, box_idx, :] = targets["classes"].view(-1, 1)
 
+        # The length of `counts` is less than batch size if some images have no box.
+        # (len(counts),) -> (batch,)
+        full_counts = torch.zeros(batch_size, dtype=torch.int64, device=device)
+        full_counts[unique_idx] = counts
+
         # Creates mask from counted batch index using broadcasting.
-        # (batch, 1) ──────┐
-        # (1, max_counts) ─┴─> (batch, max_counts) -> (batch, max_counts, 1)
+        # (1, max_counts) ─┐
+        # (batch, 1) ──────┴─> (batch, max_counts) -> (batch, max_counts, 1)
         padded_idx = torch.arange(max_counts, device=device).unsqueeze(0)
-        gt_mask = (padded_idx < counts.unsqueeze(1)).unsqueeze(-1)
+        gt_mask = (padded_idx < full_counts.unsqueeze(1)).unsqueeze(-1)
 
         return (gt_boxes, gt_classes, gt_mask)
 
