@@ -8,9 +8,9 @@ PARSER = argparse.ArgumentParser()
 PARSER.add_argument("-c", "--config", type=Path, help="path to config file", required=True, metavar="FILE")  # fmt: skip # noqa: E501
 ARGS = PARSER.parse_args()
 
+import albumentations as A
 import lightning as L
 import torch
-import torchvision.transforms.v2 as T
 from torchmetrics.detection import MeanAveragePrecision
 
 from liandan.data import BananaDetection
@@ -76,15 +76,12 @@ class LitModule(L.LightningModule):
 
         # Formats targets from batch for metric computation.
         targets = []
-        _, counts = batch["batch_idx"].unique_consecutive(return_counts=True)
-        counts = counts.tolist()
-        for i in range(len(counts)):
-            # This datasets has only 1 box in each image, so we can directly take them.
-            num_valid = counts[i]
+        for i in range(batch["images"].shape[0]):
+            mask = batch["batch_idx"] == i
             targets.append(
                 {
-                    "boxes": batch["boxes"][i, 0:num_valid],
-                    "labels": batch["classes"][i, 0:num_valid].long(),
+                    "boxes": batch["boxes"][mask],
+                    "labels": batch["classes"][mask].squeeze(-1),
                 }
             )
 
@@ -133,11 +130,16 @@ def main() -> None:
 
     metrics = {"map": MeanAveragePrecision(box_format="xyxy", iou_type="bbox")}
 
-    train_transforms = T.Compose(
+    img_h, img_w = cfg["model"]["img_size"]
+    train_transforms = A.Compose(
         [
-            T.ToDtype(torch.float32, scale=True),
-            T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-        ]
+            A.HorizontalFlip(p=0.5),
+            A.Resize(height=img_h, width=img_w),
+            A.ToFloat(),
+            A.Normalize(mean=0.5, std=0.5, max_pixel_value=1.0),
+            A.ToTensorV2(),
+        ],
+        bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["classes"]),
     )
     train_dataset = BananaDetection(
         cfg["dataset"]["root"],
@@ -154,11 +156,14 @@ def main() -> None:
         persistent_workers=cfg["dataset"]["num_workers"] > 0,
     )
 
-    val_transforms = T.Compose(
+    val_transforms = A.Compose(
         [
-            T.ToDtype(torch.float32, scale=True),
-            T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-        ]
+            A.Resize(height=img_h, width=img_w),
+            A.ToFloat(),
+            A.Normalize(mean=0.5, std=0.5, max_pixel_value=1.0),
+            A.ToTensorV2(),
+        ],
+        bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["classes"]),
     )
     val_dataset = BananaDetection(
         cfg["dataset"]["root"],

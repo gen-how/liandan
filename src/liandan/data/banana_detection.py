@@ -3,9 +3,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal
 
+import albumentations as A
+import cv2
+import numpy as np
 import torch
-from torchvision.io import decode_image
-from torchvision.tv_tensors import BoundingBoxes, Image
 
 from liandan.utils.data import calculate_md5, download_file, extract_zip
 
@@ -41,24 +42,36 @@ class BananaDetection(torch.utils.data.Dataset):
         if download:
             self._download_and_extract()
 
-        self.images, self.labels = self._load_data()
+        self._load_data()
 
     def __len__(self) -> int:
         return len(self.labels)
 
     def __getitem__(self, index: int) -> dict[str, Any]:
-        img = Image(self.images[index])
-        boxes = BoundingBoxes(
-            self.labels[index, :, 1:],
-            format="XYXY",
-            canvas_size=(img.shape[-2], img.shape[-1]),
-        )  # type: ignore
+        img = self.images[index]
+        head = self.labels_offset[index]
+        tail = self.labels_offset[index + 1]
+        bboxes = self.labels[head:tail, 1:]
+        classes = self.labels[head:tail, :1]
         sample = {
-            "boxes": boxes,
-            "classes": self.labels[index, :, 0],
             "image": img,
+            "bboxes": bboxes,
+            "classes": classes,
         }
-        return self.transform(sample) if self.transform else sample
+
+        if self.transform:
+            sample = self.transform(**sample)
+
+        if len(sample["bboxes"]) > 0:
+            bboxes_tensor = torch.as_tensor(sample["bboxes"], dtype=torch.float32)
+            classes_tensor = torch.as_tensor(sample["classes"], dtype=torch.int64)
+            sample["bboxes"] = bboxes_tensor.view(-1, 4)
+            sample["classes"] = classes_tensor.view(-1, 1)
+        else:
+            sample["bboxes"] = torch.empty((0, 4), dtype=torch.float32)
+            sample["classes"] = torch.empty((0, 1), dtype=torch.int64)
+
+        return sample
 
     @staticmethod
     def collate_fn(batch: list[dict[str, Any]]) -> dict[str, torch.Tensor]:
@@ -70,13 +83,21 @@ class BananaDetection(torch.utils.data.Dataset):
         Returns:
             out (dict[str, torch.Tensor]): 整理後的批次資料。
         """
-        collated = {
-            "images": torch.stack([b["image"] for b in batch]),
-            "batch_idx": torch.arange(len(batch)),
-            "boxes": torch.stack([b["boxes"] for b in batch]),
-            "classes": torch.stack([b["classes"] for b in batch]),
+        images = torch.stack([b["image"] for b in batch])
+        bboxes_by_sample = [b["bboxes"] for b in batch]
+        classes_by_sample = [b["classes"] for b in batch]
+        num_obj_by_sample = torch.tensor([boxes.shape[0] for boxes in bboxes_by_sample])
+        batch_idx = torch.repeat_interleave(
+            torch.arange(len(batch), dtype=torch.int64), num_obj_by_sample
+        )
+        bboxes = torch.cat(bboxes_by_sample, dim=0)
+        classes = torch.cat(classes_by_sample, dim=0)
+        return {
+            "images": images,
+            "boxes": bboxes,
+            "classes": classes,
+            "batch_idx": batch_idx,
         }
-        return collated
 
     def _load_data(self):
         split_name = {"train": "bananas_train", "valid": "bananas_val"}
@@ -84,16 +105,25 @@ class BananaDetection(torch.utils.data.Dataset):
         # This is a small dataset, so we load all data into memory.
         with (split_dir / "label.csv").open("r") as f:
             reader = csv.reader(f.readlines())
-            _ = next(reader)  # Skips header
-            image_dir = split_dir / "images"
-            images = []
-            labels = []
-            for row in reader:
-                # Each row contains [img_name, cls, x0, y0, x1, y1].
-                images.append(decode_image(str(image_dir / row[0])))
-                labels.append(list(map(int, row[1:])))
-            # All images have the same shape, so we can stack them directly.
-            return torch.stack(images), torch.tensor(labels).unsqueeze_(1)
+        # Skips the header row.
+        _ = next(reader)
+
+        image_dir = split_dir / "images"
+        images = []
+        labels = []
+        for row in reader:
+            # Each row contains [img_name, cls, x0, y0, x1, y1].
+            image_path = image_dir / row[0]
+            image = cv2.imread(str(image_path))
+            assert image is not None, f"Failed to load image '{image_path}'."
+            images.append(image)
+            labels.append(np.fromiter(row[1:], dtype=np.int64))
+
+        # All images have the same shape, so we can stack them directly.
+        self.images = np.stack(images)
+        # Each image have exactly one bounding box.
+        self.labels_offset = np.arange(len(labels) + 1)
+        self.labels = np.stack(labels)
 
     def _download_and_extract(self):
         self.root.mkdir(parents=True, exist_ok=True)
@@ -121,57 +151,59 @@ class BananaDetection(torch.utils.data.Dataset):
 
 
 if __name__ == "__main__":
-    import cv2
-    import numpy as np
     from torch.utils.data import DataLoader
-    from torchvision.transforms import v2 as T
 
-    t = T.Compose(
+    from liandan.utils.opencv import from_tensor, rectangle, text_autoscale
+
+    t = A.Compose(
         [
-            T.RandomCrop(size=(64, 64)),
-            T.ToDtype(torch.float32, scale=True),
-        ]
+            A.HorizontalFlip(p=0.5),
+            A.ToTensorV2(),
+        ],
+        bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["classes"]),
     )
     bd = BananaDetection("./datasets/banana-detection", split="train", transform=t)
     dl = DataLoader(bd, batch_size=8, collate_fn=BananaDetection.collate_fn)
 
-    # 獲取一個批次並可視化
+    # Visualizes each batch in a 2x4 grid. Press ESC or q to exit.
     for batch in dl:
         images = batch["images"]
         boxes = batch["boxes"]
         classes = batch["classes"]
+        batch_idx = batch["batch_idx"]
 
         batch_size = images.shape[0]
-        # 創建 2x4 網格的大圖
         grid_h, grid_w = 2, 4
-        img_h, img_w = 64, 64
+        img_h, img_w = images.shape[-2:]
         canvas = np.zeros((grid_h * img_h, grid_w * img_w, 3), dtype=np.uint8)
 
-        print("==========")
         for i in range(batch_size):
-            # 轉換為 numpy 並從 RGB 轉為 BGR（OpenCV 格式）
-            img = images[i].permute(1, 2, 0).numpy().astype(np.uint8)
-            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            img = from_tensor(images[i], color_fmt="bgr")
 
-            # 繪製偵測框
-            for box, cls in zip(boxes[i], classes[i], strict=True):
-                if cls >= 0:  # 只繪製有效類別的框
-                    x0, y0, x1, y1 = box.tolist()
-                    x0, y0, x1, y1 = int(x0), int(y0), int(x1), int(y1)
-                    cv2.rectangle(img, (x0, y0), (x1, y1), (0, 0, 255), 2)
-                    print(f"Image {i}, Box: ({x0}, {y0}, {x1}, {y1})")
+            sample_mask = batch_idx == i
+            sample_boxes = boxes[sample_mask]
+            sample_classes = classes[sample_mask]
 
-            # 計算在網格中的位置
+            for box, cls in zip(sample_boxes, sample_classes, strict=True):
+                xyxy = box.int().tolist()
+                rectangle(img, xyxy, (0, 0, 255), thickness=2)
+                text_autoscale(
+                    img,
+                    f"{cls.item()}",
+                    xyxy[0:2],
+                    (0, 255, 0),
+                    move_base=True,
+                )
+
             row = i // grid_w
             col = i % grid_w
-            y_start, y_end = row * img_h, (row + 1) * img_h
-            x_start, x_end = col * img_w, (col + 1) * img_w
+            y0, y1 = row * img_h, (row + 1) * img_h
+            x0, x1 = col * img_w, (col + 1) * img_w
+            canvas[y0:y1, x0:x1] = img
 
-            canvas[y_start:y_end, x_start:x_end] = img
-
-        # 顯示拼接後的圖片
-        cv2.imshow("Batch Visualization", canvas)
+        cv2.imshow("BananaDetection Batch", canvas)
         key = cv2.waitKey(0)
-        if key == 27:  # 按下 ESC 鍵退出
-            cv2.destroyAllWindows()
+        if key in (27, ord("q")):
             break
+
+    cv2.destroyAllWindows()
