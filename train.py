@@ -24,14 +24,14 @@ class LitModule(L.LightningModule):
         model: torch.nn.Module,
         loss_fn: torch.nn.Module,
         optimizer: torch.optim.Optimizer,
-        scheduler: torch.optim.lr_scheduler.LRScheduler,
+        lr_scheduler: torch.optim.lr_scheduler.LRScheduler,
         metrics: dict[str, Any],
     ):
         super().__init__()
         self.model = model
         self.loss_fn = loss_fn
         self.optimizer = optimizer
-        self.scheduler = scheduler
+        self.lr_scheduler = lr_scheduler
         self.metrics = metrics
         self._entry: dict[str, torch.Tensor] = {}
 
@@ -39,7 +39,7 @@ class LitModule(L.LightningModule):
         return {
             "optimizer": self.optimizer,
             "lr_scheduler": {
-                "scheduler": self.scheduler,
+                "scheduler": self.lr_scheduler,
                 "interval": "epoch",
                 "frequency": 1,
             },
@@ -122,7 +122,7 @@ def main() -> None:
         weight_decay=cfg["optimizer"]["weight_decay"],
     )
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer,
         cfg["trainer"]["max_epochs"],
         cfg["optimizer"]["lr"] * 0.01,
@@ -184,7 +184,7 @@ def main() -> None:
         model=model,
         loss_fn=loss_fn,
         optimizer=optimizer,
-        scheduler=scheduler,
+        lr_scheduler=lr_scheduler,
         metrics=metrics,
     )
 
