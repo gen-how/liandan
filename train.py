@@ -18,6 +18,41 @@ from liandan.losses.detection import YOLOv8DetectionLoss
 from liandan.models import YOLOv8
 
 
+class SaveWeightsCallback(L.Callback):
+    def __init__(
+        self,
+        name: str,
+        monitor: str,
+        save_dir: Path = Path("experiments/weights"),
+    ) -> None:
+        self.save_path = save_dir / f"{name}.pt"
+        self.monitor = monitor
+        self.best_score = float("-inf")
+
+    def on_train_epoch_end(
+        self,
+        trainer: L.Trainer,
+        pl_module: L.LightningModule,
+    ) -> None:
+        if trainer.sanity_checking or not trainer.is_global_zero:
+            return
+
+        metric = trainer.callback_metrics.get(self.monitor)
+        if metric is None:
+            raise ValueError(f"Metric '{self.monitor}' not found in callback metrics.")
+
+        score = metric.item() if isinstance(metric, torch.Tensor) else float(metric)
+        if score < self.best_score:
+            return
+
+        # Creates save directory if it does not exist.
+        self.save_path.parent.mkdir(parents=True, exist_ok=True)
+
+        assert isinstance(pl_module.model, torch.nn.Module)
+        torch.save(pl_module.model.state_dict(), self.save_path)
+        self.best_score = score
+
+
 class LitModule(L.LightningModule):
     def __init__(
         self,
@@ -89,12 +124,16 @@ class LitModule(L.LightningModule):
         self.metrics["map"].update(preds, targets)
         return None
 
-    def on_train_epoch_end(self) -> None:
+    def on_validation_epoch_end(self) -> None:
+        if self.trainer.sanity_checking:
+            return
         result = self.metrics["map"].compute()
         self._entry["val/mAP@50-95"] = result["map"]
         self._entry["val/mAP@50"] = result["map_50"]
         self.log_dict(self._entry, on_step=False, on_epoch=True, prog_bar=True)
-        # Resets all metrics at the end of each training epoch.
+
+    def on_train_epoch_end(self) -> None:
+        # Resets all metrics at the end of each epoch.
         for m in self.metrics.values():
             m.reset()
 
@@ -188,7 +227,12 @@ def main() -> None:
         metrics=metrics,
     )
 
-    trainer = L.Trainer(**cfg["trainer"])
+    trainer = L.Trainer(
+        callbacks=[
+            SaveWeightsCallback("yolov8_banana_detection", monitor="val/mAP@50-95")
+        ],
+        **cfg["trainer"],
+    )
     trainer.fit(
         model=wrapper,
         train_dataloaders=train_dataloader,
