@@ -11,11 +11,36 @@ ARGS = PARSER.parse_args()
 import albumentations as A
 import lightning as L
 import torch
+from lightning.pytorch.callbacks import RichProgressBar
 from torchmetrics.detection import MeanAveragePrecision
 
 from liandan.data import BananaDetection
 from liandan.losses.detection import YOLOv8DetectionLoss
 from liandan.models import YOLOv8
+
+
+class ModifiedRichProgressBar(RichProgressBar):
+    """修改過的 PyTorch Lightning 框架預設的 RichProgressBar 回調函式。
+
+    1. 將 Epoch 進度改為 1 開始（原版從 0 開始）
+    2. 移除預設版本號顯示（v_num）
+    """
+
+    def _get_train_description(self, current_epoch: int) -> str:
+        current = current_epoch + 1
+        desc = f"Epoch {current}"
+        if self.trainer.max_epochs is not None:
+            desc += f"/{self.trainer.max_epochs}"
+        if len(self.validation_description) > len(desc):
+            desc = f"{desc:{len(self.validation_description)}}"
+        return desc
+
+    def get_metrics(
+        self, trainer: L.Trainer, pl_module: L.LightningModule
+    ) -> dict[str, int | str | float | dict[str, float]]:
+        items = super().get_metrics(trainer, pl_module)
+        items.pop("v_num", None)
+        return items
 
 
 class SaveWeightsCallback(L.Callback):
@@ -229,7 +254,8 @@ def main() -> None:
 
     trainer = L.Trainer(
         callbacks=[
-            SaveWeightsCallback("yolov8_banana_detection", monitor="val/mAP@50-95")
+            ModifiedRichProgressBar(),
+            SaveWeightsCallback("yolov8_banana_detection", monitor="val/mAP@50-95"),
         ],
         **cfg["trainer"],
     )
