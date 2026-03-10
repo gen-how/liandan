@@ -193,17 +193,23 @@ def main() -> None:
     )
 
     metrics = {"map": MeanAveragePrecision(box_format="xyxy", iou_type="bbox")}
+    metrics["map"].warn_on_many_detections = False  # Suppresses warning.
 
     img_h, img_w = cfg["model"]["img_size"]
     train_transforms = A.Compose(
         [
             A.HorizontalFlip(p=0.5),
+            A.RandomCrop(height=int(img_h * 0.8), width=int(img_w * 0.8), p=0.5),
             A.Resize(height=img_h, width=img_w),
             A.ToFloat(),
             A.Normalize(mean=0.5, std=0.5, max_pixel_value=1.0),
             A.ToTensorV2(),
         ],
-        bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["classes"]),
+        bbox_params=A.BboxParams(
+            coord_format="pascal_voc",
+            label_fields=["classes"],
+            min_visibility=0.5,
+        ),
     )
     train_dataset = BananaDetection(
         cfg["dataset"]["root"],
@@ -227,7 +233,10 @@ def main() -> None:
             A.Normalize(mean=0.5, std=0.5, max_pixel_value=1.0),
             A.ToTensorV2(),
         ],
-        bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["classes"]),
+        bbox_params=A.BboxParams(
+            coord_format="pascal_voc",
+            label_fields=["classes"],
+        ),
     )
     val_dataset = BananaDetection(
         cfg["dataset"]["root"],
