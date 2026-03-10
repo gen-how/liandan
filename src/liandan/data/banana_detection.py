@@ -3,7 +3,6 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal
 
-import albumentations as A
 import cv2
 import numpy as np
 import torch
@@ -151,6 +150,7 @@ class BananaDetection(torch.utils.data.Dataset):
 
 
 if __name__ == "__main__":
+    import albumentations as A
     from torch.utils.data import DataLoader
 
     from liandan.utils.opencv import from_tensor, rectangle, text_autoscale
@@ -162,8 +162,8 @@ if __name__ == "__main__":
         ],
         bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["classes"]),
     )
-    bd = BananaDetection("./datasets/banana-detection", split="train", transform=t)
-    dl = DataLoader(bd, batch_size=8, collate_fn=BananaDetection.collate_fn)
+    ds = BananaDetection("./datasets/banana-detection", split="train", transform=t)
+    dl = DataLoader(ds, batch_size=8, collate_fn=BananaDetection.collate_fn)
 
     # Visualizes each batch in a 2x4 grid. Press ESC or q to exit.
     for batch in dl:
