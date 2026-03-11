@@ -95,9 +95,7 @@ class KAIST8(torch.utils.data.Dataset):
         bboxes_by_sample = [b["bboxes"] for b in batch]
         classes_by_sample = [b["classes"] for b in batch]
         num_obj_by_sample = torch.tensor([boxes.shape[0] for boxes in bboxes_by_sample])
-        batch_idx = torch.repeat_interleave(
-            torch.arange(len(batch), dtype=torch.int64), num_obj_by_sample
-        )
+        batch_idx = torch.repeat_interleave(torch.arange(len(batch)), num_obj_by_sample)
         bboxes = torch.cat(bboxes_by_sample, dim=0)
         classes = torch.cat(classes_by_sample, dim=0)
 
@@ -132,6 +130,8 @@ class KAIST8(torch.utils.data.Dataset):
 
 
 if __name__ == "__main__":
+    from functools import partial
+
     import albumentations as A
     from torch.utils.data import DataLoader
 
@@ -150,6 +150,8 @@ if __name__ == "__main__":
     dl = DataLoader(ds, batch_size=4, collate_fn=ds.collate_fn)
 
     # Visualizes each batch in a 2x4 grid. Press ESC or q to exit.
+    _rectangle = partial(rectangle, color=(0, 255, 0), thickness=2)
+    _text = partial(text_autoscale, color=(0, 255, 0), thickness=2, move_base=True)
     for batch in dl:
         visible_img = batch["images"]
         infrared_img = batch["ir_images"]
@@ -172,22 +174,10 @@ if __name__ == "__main__":
 
             for box, cls in zip(sample_boxes, sample_classes, strict=True):
                 xyxy = box.int().tolist()
-                rectangle(vis_img, xyxy, (0, 255, 0), thickness=2)
-                rectangle(red_img, xyxy, (0, 255, 0), thickness=2)
-                text_autoscale(
-                    vis_img,
-                    f"{cls.item()}",
-                    xyxy[0:2],
-                    (0, 255, 0),
-                    move_base=True,
-                )
-                text_autoscale(
-                    red_img,
-                    f"{cls.item()}",
-                    xyxy[0:2],
-                    (0, 255, 0),
-                    move_base=True,
-                )
+                _rectangle(vis_img, xyxy)
+                _rectangle(red_img, xyxy)
+                _text(vis_img, f"{cls.item()}", xyxy[0:2])
+                _text(red_img, f"{cls.item()}", xyxy[0:2])
 
             col = i % grid_w
             x0, x1 = col * img_w, (col + 1) * img_w

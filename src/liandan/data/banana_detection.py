@@ -86,9 +86,7 @@ class BananaDetection(torch.utils.data.Dataset):
         bboxes_by_sample = [b["bboxes"] for b in batch]
         classes_by_sample = [b["classes"] for b in batch]
         num_obj_by_sample = torch.tensor([boxes.shape[0] for boxes in bboxes_by_sample])
-        batch_idx = torch.repeat_interleave(
-            torch.arange(len(batch), dtype=torch.int64), num_obj_by_sample
-        )
+        batch_idx = torch.repeat_interleave(torch.arange(len(batch)), num_obj_by_sample)
         bboxes = torch.cat(bboxes_by_sample, dim=0)
         classes = torch.cat(classes_by_sample, dim=0)
         return {
