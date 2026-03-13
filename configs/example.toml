@@ -18,6 +18,11 @@ download = false
 [trainer]
 max_epochs = 20
 
+[logger]
+name = "banana-detection"
+version = "v0"
+save_dir = "experiments"
+
 [runtime]
 seed = 42
 deterministic = true
