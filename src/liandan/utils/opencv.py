@@ -108,3 +108,67 @@ def text_autoscale(
         _, base = cv2.getTextSize(text, font_face, scale, thickness)
         org = (org[0], org[1] - base)
     cv2.putText(img, text, org, font_face, scale, color, thickness, **kwargs)
+
+
+def get_letterbox_params(
+    src_w: int, src_h: int, dst_w: int, dst_h: int
+) -> tuple[float, tuple[int, int], tuple[int, int, int, int]]:
+    """計算 Letterbox 所需的參數。
+
+    Args:
+        src_w (int): 來源影像寬度。
+        src_h (int): 來源影像高度。
+        dst_w (int): 目標影像寬度。
+        dst_h (int): 目標影像高度。
+
+    Returns:
+        out (tuple[float, tuple[int, int], tuple[int, int, int, int]]):
+            - scale: 縮放回原本尺寸的係數。
+            - (new_w, new_h): 縮放後的影像尺寸(未填充)。
+            - (pad_l, pad_t, pad_r, pad_b): 左上右下個別的填充量。
+    """
+    scale = min(dst_w / src_w, dst_h / src_h)
+    new_w = int(src_w * scale)
+    new_h = int(src_h * scale)
+    pad_l = (dst_w - new_w) // 2
+    pad_r = dst_w - new_w - pad_l
+    pad_t = (dst_h - new_h) // 2
+    pad_b = dst_h - new_h - pad_t
+    return 1 / scale, (new_w, new_h), (pad_l, pad_t, pad_r, pad_b)
+
+
+def letterbox(
+    img: MatLike,
+    new_size: tuple[int, int],
+    padding: tuple[int, int, int, int],
+    value: tuple[int, int, int] = (0, 0, 0),
+) -> MatLike:
+    """縮放並填充一張圖片到目標尺寸。
+
+    `new_size`及`padding`可調用`get_letterbox_params`函式取得。
+
+    Args:
+        img (Matlike):
+            來源影像。
+        new_size (tuple[int, int]):
+            縮放後但尚未填充的影像尺寸`(new_w, new_h)`。
+        padding (tuple[int, int, int, int]):
+            表示左上右下方向填充像素個數的 tuple `(pad_l, pad_t, pad_r, pad_b)`。
+        value (tuple[int, int, int]):
+            填充像素值`(B, G, R)`預設為`(0, 0, 0)`。
+
+    Returns:
+        out (Matlike):
+            處理完的影像。
+    """
+    resized = cv2.resize(img, new_size)
+    padded = cv2.copyMakeBorder(
+        resized,
+        top=padding[1],
+        bottom=padding[3],
+        left=padding[0],
+        right=padding[2],
+        borderType=cv2.BORDER_CONSTANT,
+        value=value,
+    )
+    return padded
