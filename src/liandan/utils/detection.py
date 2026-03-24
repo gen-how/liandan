@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 
 import torch
+from torchvision.ops import batched_nms as _batched_nms
 
 
 def make_anchors(
@@ -214,3 +215,38 @@ def cxcywh2xyxy(
     if split:
         return x0, y0, x1, y1
     return torch.cat((x0, y0, x1, y1), dim=-1)
+
+
+def nms(
+    boxes: torch.Tensor,
+    scores: torch.Tensor,
+    classes: torch.Tensor,
+    score_threshold: float = 0.5,
+    iou_threshold: float = 0.5,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """對單張影像的預測結果進行 Non-maximum suppression (NMS) 後處理。
+
+    Args:
+        boxes (torch.Tensor): 預測框座標，形狀為`(N, 4)`的`(x0, y0, x1, y1)`座標。
+        scores (torch.Tensor): 預測分數，形狀為`(N,)`。
+        labels (torch.Tensor): 預測類別，形狀為`(N,)`。
+        score_threshold (float): 預測分數過濾閾值。
+        iou_threshold (float): NMS 的 IoU 閾值。
+
+    Returns:
+        out (tuple[torch.Tensor, torch.Tensor, torch.Tensor]):
+            過濾之後的 (偵測框、分數、類別) 張量。
+    """
+    keeped = scores > score_threshold
+    keeped_boxes = boxes[keeped]
+    keeped_scores = scores[keeped]
+    keeped_classes = classes[keeped]
+
+    if keeped_boxes.numel() == 0:
+        return (keeped_boxes, keeped_scores, keeped_classes)
+
+    keeped = _batched_nms(keeped_boxes, keeped_scores, keeped_classes, iou_threshold)
+    final_boxes = keeped_boxes[keeped]
+    final_scores = keeped_scores[keeped]
+    final_classes = keeped_classes[keeped]
+    return (final_boxes, final_scores, final_classes)
