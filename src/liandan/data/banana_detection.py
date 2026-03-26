@@ -43,17 +43,43 @@ class BananaDetection(torch.utils.data.Dataset):
 
         self._load_data()
 
+    def _load_data(self):
+        split_name = {"train": "bananas_train", "valid": "bananas_val"}
+        split_dir = self.root / split_name[self.split]
+        # This is a small dataset, so we load all data into memory.
+        with (split_dir / "label.csv").open("r") as f:
+            reader = csv.reader(f.readlines())
+        # Skips the header row.
+        _ = next(reader)
+
+        image_dir = split_dir / "images"
+        images = []
+        labels = []
+        for row in reader:
+            # Each row contains [img_name, cls, x0, y0, x1, y1].
+            image_path = image_dir / row[0]
+            image = cv2.imread(str(image_path))
+            assert image is not None, f"Failed to load image '{image_path}'."
+            images.append(image)
+            labels.append(np.fromiter(row[1:], dtype=np.int64))
+
+        # All images have the same shape, so we can stack them directly.
+        self.images = np.stack(images)
+        # Each image have exactly one bounding box.
+        self.labels_offset = np.arange(len(labels) + 1)
+        self.labels = np.stack(labels)
+
     def __len__(self) -> int:
         return len(self.labels)
 
     def __getitem__(self, index: int) -> dict[str, Any]:
-        img = self.images[index]
+        image = self.images[index]
         head = self.labels_offset[index]
         tail = self.labels_offset[index + 1]
         bboxes = self.labels[head:tail, 1:]
         classes = self.labels[head:tail, :1]
         sample = {
-            "image": img,
+            "image": image,
             "bboxes": bboxes,
             "classes": classes,
         }
@@ -96,32 +122,6 @@ class BananaDetection(torch.utils.data.Dataset):
             "batch_idx": batch_idx,
         }
 
-    def _load_data(self):
-        split_name = {"train": "bananas_train", "valid": "bananas_val"}
-        split_dir = self.root / split_name[self.split]
-        # This is a small dataset, so we load all data into memory.
-        with (split_dir / "label.csv").open("r") as f:
-            reader = csv.reader(f.readlines())
-        # Skips the header row.
-        _ = next(reader)
-
-        image_dir = split_dir / "images"
-        images = []
-        labels = []
-        for row in reader:
-            # Each row contains [img_name, cls, x0, y0, x1, y1].
-            image_path = image_dir / row[0]
-            image = cv2.imread(str(image_path))
-            assert image is not None, f"Failed to load image '{image_path}'."
-            images.append(image)
-            labels.append(np.fromiter(row[1:], dtype=np.int64))
-
-        # All images have the same shape, so we can stack them directly.
-        self.images = np.stack(images)
-        # Each image have exactly one bounding box.
-        self.labels_offset = np.arange(len(labels) + 1)
-        self.labels = np.stack(labels)
-
     def _download_and_extract(self):
         self.root.mkdir(parents=True, exist_ok=True)
         for filename, md5 in BananaDetection.RESOURCES:
@@ -155,7 +155,6 @@ if __name__ == "__main__":
 
     t = A.Compose(
         [
-            A.HorizontalFlip(p=0.5),
             A.ToTensorV2(),
         ],
         bbox_params=A.BboxParams(coord_format="pascal_voc", label_fields=["classes"]),
