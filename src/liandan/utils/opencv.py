@@ -24,8 +24,9 @@ def from_tensor(tensor: torch.Tensor, color_fmt="rgb") -> MatLike:
     """
     if tensor.ndim != 3:
         raise ValueError("Input tensor must be 3-dimensional (C, H, W).")
-    if tensor.dtype != torch.uint8:
-        raise ValueError("Input tensor must have dtype uint8.")
+
+    if tensor.dtype == torch.float32:
+        tensor = tensor.to(torch.uint8)
 
     # If color format in Tensor is RGB, convert to BGR for OpenCV.
     if color_fmt == "rgb":
