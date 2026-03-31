@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 import torch
 from torchvision.ops import batched_nms as _batched_nms
@@ -217,7 +217,7 @@ def cxcywh2xyxy(
     return torch.cat((x0, y0, x1, y1), dim=-1)
 
 
-def nms(
+def torchvision_nms(
     boxes: torch.Tensor,
     scores: torch.Tensor,
     classes: torch.Tensor,
@@ -225,6 +225,8 @@ def nms(
     iou_threshold: float = 0.5,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """對單張影像的預測結果進行 Non-maximum suppression (NMS) 後處理。
+
+    使用 `torchvision.ops.batched_nms` 函式實現的版本。
 
     Args:
         boxes (torch.Tensor): 預測框座標，形狀為`(N, 4)`的`(x0, y0, x1, y1)`座標。
@@ -237,7 +239,7 @@ def nms(
         out (tuple[torch.Tensor, torch.Tensor, torch.Tensor]):
             過濾之後的 (偵測框、分數、類別) 張量。
     """
-    keeped = scores > score_threshold
+    keeped = scores >= score_threshold
     keeped_boxes = boxes[keeped]
     keeped_scores = scores[keeped]
     keeped_classes = classes[keeped]
@@ -248,5 +250,102 @@ def nms(
     keeped = _batched_nms(keeped_boxes, keeped_scores, keeped_classes, iou_threshold)
     final_boxes = keeped_boxes[keeped]
     final_scores = keeped_scores[keeped]
-    final_classes = keeped_classes[keeped]
+    final_labels = keeped_classes[keeped]
+    return (final_boxes, final_scores, final_labels)
+
+
+def pairwise_boxes_iou(boxes1: torch.Tensor, boxes2: torch.Tensor):
+    # Shape: (..., N)
+    area1 = (boxes1[..., 2] - boxes1[..., 0]) * (boxes1[..., 3] - boxes1[..., 1])
+    # Shape: (..., M)
+    area2 = (boxes2[..., 2] - boxes2[..., 0]) * (boxes2[..., 3] - boxes2[..., 1])
+
+    # Shape: (..., N, M, 2)
+    lt = torch.max(boxes1[..., None, :2], boxes2[..., None, :, :2])
+    rb = torch.min(boxes1[..., None, 2:], boxes2[..., None, :, 2:])
+    wh = (rb - lt).clamp_(0)
+
+    # Shape: (..., N, M)
+    inter = wh[..., 0] * wh[..., 1]
+    union = area1[..., None] + area2[..., None, :] - inter
+    return inter / union
+
+
+def pairwise_boxes_diou(boxes1: torch.Tensor, boxes2: torch.Tensor, eps: float = 1e-7):
+    # Shape: (..., N)
+    area1 = (boxes1[..., 2] - boxes1[..., 0]) * (boxes1[..., 3] - boxes1[..., 1])
+    # Shape: (..., M)
+    area2 = (boxes2[..., 2] - boxes2[..., 0]) * (boxes2[..., 3] - boxes2[..., 1])
+
+    # Shape: (..., N, M, 2)
+    lt = torch.max(boxes1[..., None, :2], boxes2[..., None, :, :2])
+    rb = torch.min(boxes1[..., None, 2:], boxes2[..., None, :, 2:])
+    wh = (rb - lt).clamp_(0)
+
+    # Shape: (..., N, M)
+    inter = wh[..., 0] * wh[..., 1]
+    union = area1[..., None] + area2[..., None, :] - inter
+
+    # Convex diagonal squared.
+    lt = torch.min(boxes1[..., None, :2], boxes2[..., None, :, :2])
+    rb = torch.max(boxes1[..., None, 2:], boxes2[..., None, :, 2:])
+    c2 = (rb - lt).pow_(2).sum(-1) + eps
+
+    # Center distance squared.
+    center1 = (boxes1[..., :2] + boxes1[..., 2:]) / 2
+    center2 = (boxes2[..., :2] + boxes2[..., 2:]) / 2
+    rho2 = (center1[..., None, :] - center2[..., None, :, :]).pow_(2).sum(-1)
+    return inter / union - rho2 / c2
+
+
+def ultralytics_nms(
+    boxes: torch.Tensor,
+    scores: torch.Tensor,
+    classes: torch.Tensor,
+    score_threshold: float = 0.5,
+    iou_threshold: float = 0.5,
+    iou_func: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = pairwise_boxes_iou,
+):
+    """對單張影像的預測結果進行 Non-maximum suppression (NMS) 後處理。
+
+    參考 ultralytics `TorchNMS.fast_nms` 函式實現的版本，與 torchvision
+    版本差別在於可以使用自訂的 iou 計算函式，若沒有要更改 iou 計算函式建議使用
+    `torchvision_nms`。
+
+    Args:
+        boxes (torch.Tensor): 預測框座標，形狀為`(N, 4)`的`(x0, y0, x1, y1)`座標。
+        scores (torch.Tensor): 預測分數，形狀為`(N,)`。
+        labels (torch.Tensor): 預測類別，形狀為`(N,)`。
+        score_threshold (float): 預測分數過濾閾值。
+        iou_threshold (float): NMS 的 IoU 閾值。
+        iou_func (Callable[[torch.Tensor, torch.Tensor], torch.Tensor]): iou 計算函式。
+
+    Returns:
+        out (tuple[torch.Tensor, torch.Tensor, torch.Tensor]):
+            過濾之後的 (偵測框、分數、類別) 張量。
+    """
+    keeped = scores >= score_threshold
+    boxes = boxes[keeped]
+    scores = scores[keeped]
+    classes = classes[keeped]
+    if boxes.numel() == 0:
+        return (boxes, scores, classes)
+
+    # Stagger the coordinates of bboxes according to the classes.
+    # This code refers to `torchvision.ops.batched_nms` implementation.
+    offsets = classes.to(boxes) * (boxes.max() + 1)
+    boxes_ = boxes + offsets[:, None]
+
+    sorted_idx = torch.argsort(scores, descending=True)
+    boxes_ = boxes_[sorted_idx]
+
+    # Calculates strictly upper triangular matrix.
+    # References: https://github.com/ultralytics/ultralytics/blob/main/ultralytics/utils/nms.py#L224
+    ious = iou_func(boxes_, boxes_).triu_(diagonal=1)
+    pick = torch.nonzero((ious >= iou_threshold).sum(0) <= 0).squeeze_(-1)
+
+    keeped = sorted_idx[pick]
+    final_boxes = boxes[keeped]
+    final_scores = scores[keeped]
+    final_classes = classes[keeped]
     return (final_boxes, final_scores, final_classes)
