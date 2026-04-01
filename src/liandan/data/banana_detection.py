@@ -13,8 +13,9 @@ from liandan.utils.data import calculate_md5, download_file, extract_zip
 class BananaDetection(torch.utils.data.Dataset):
     """香蕉檢測資料集。
 
-    此資料集用於訓練香蕉檢測模型，包含訓練集與驗證集兩個部分，取自李沐博士的教學系列影片 [41 物体检测和数据集【动手学深度学习v2】](https://www.bilibili.com/video/BV1Lh411Y7LX/?p=3)。
-    """  # noqa: E501
+    此資料集用於訓練香蕉檢測模型，包含訓練集與驗證集兩個部分，取自李沐博士的教學系列影片
+    [41 物体检测和数据集【动手学深度学习v2】](https://www.bilibili.com/video/BV1Lh411Y7LX/?p=3)。
+    """
 
     MIRRORS = ("http://d2l-data.s3-accelerate.amazonaws.com/",)
     RESOURCES = (("banana-detection.zip", "191823bdb3e62ff13738cc27fa5ee5dd"),)
@@ -25,6 +26,7 @@ class BananaDetection(torch.utils.data.Dataset):
         split: Literal["train", "valid"],
         transform: Callable | None = None,
         download=False,
+        color_fmt: Literal["rgb", "bgr"] = "rgb",
     ):
         """根據`split`載入不同部分的香蕉檢測資料集。
 
@@ -33,10 +35,14 @@ class BananaDetection(torch.utils.data.Dataset):
             split (str): 選擇載入哪一部分的資料集，必需是`"train"`或`"valid"`。
             transform (Callable, optional): 資料轉換函數，預設值為`None`。
             download (bool, optional): 是否下載並解壓資料集，預設值為`False`。
-        """
+            color_fmt (str, optional): 影像色彩格式，必需是`"rgb"`或`"bgr"`，預設值為`"rgb"`。
+        """  # noqa: E501
         self.root = Path(root).expanduser()
         self.split = split
         self.transform = transform
+        self.imread_flag = (
+            cv2.IMREAD_COLOR_RGB if color_fmt.lower() == "rgb" else cv2.IMREAD_COLOR
+        )
 
         if download:
             self._download_and_extract()
@@ -58,7 +64,7 @@ class BananaDetection(torch.utils.data.Dataset):
         for row in reader:
             # Each row contains [img_name, cls, x0, y0, x1, y1].
             image_path = image_dir / row[0]
-            image = cv2.imread(str(image_path))
+            image = cv2.imread(str(image_path), self.imread_flag)
             assert image is not None, f"Failed to load image '{image_path}'."
             images.append(image)
             labels.append(np.fromiter(row[1:], dtype=np.int64))
@@ -175,7 +181,7 @@ if __name__ == "__main__":
         canvas = np.zeros((grid_h * img_h, grid_w * img_w, 3), dtype=np.uint8)
 
         for i in range(batch_size):
-            img = from_tensor(images[i], color_fmt="bgr")
+            img = from_tensor(images[i])
 
             sample_mask = batch_idx == i
             sample_boxes = boxes[sample_mask]

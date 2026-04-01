@@ -25,6 +25,7 @@ class KAIST8(torch.utils.data.Dataset):
         root: str | Path,
         split: Literal["train", "valid"],
         transform: Callable | None = None,
+        color_fmt: Literal["rgb", "bgr"] = "rgb",
     ) -> None:
         self.root = Path(root).expanduser()
         if not self.root.exists():
@@ -35,6 +36,9 @@ class KAIST8(torch.utils.data.Dataset):
             raise ValueError("The argument 'split' must be 'train' or 'valid'.")
         self.split = split_alias[split]
         self.transform = transform
+        self.imread_flag = (
+            cv2.IMREAD_COLOR_RGB if color_fmt.lower() == "rgb" else cv2.IMREAD_COLOR
+        )
 
         self.visible_dir = self.root / "visible" / self.split
         self.infrared_dir = self.root / "infrared" / self.split
@@ -60,8 +64,12 @@ class KAIST8(torch.utils.data.Dataset):
 
     def __getitem__(self, index: int) -> dict[str, Any]:
         sample_id = self.sample_ids[index]
-        visible_img = cv2.imread(str(self.visible_dir / f"{sample_id}.jpg"))
-        infrared_img = cv2.imread(str(self.infrared_dir / f"{sample_id}.jpg"))
+        visible_img = cv2.imread(
+            str(self.visible_dir / f"{sample_id}.jpg"), self.imread_flag
+        )
+        infrared_img = cv2.imread(
+            str(self.infrared_dir / f"{sample_id}.jpg"), self.imread_flag
+        )
         head = self.labels_offset[index]
         tail = self.labels_offset[index + 1]
         bboxes = self.labels[head:tail, 1:5]
@@ -165,8 +173,8 @@ if __name__ == "__main__":
         canvas = np.zeros((grid_h * img_h, grid_w * img_w, 3), dtype=np.uint8)
 
         for i in range(batch_size):
-            vis_img = from_tensor(visible_img[i], color_fmt="bgr")
-            red_img = from_tensor(infrared_img[i], color_fmt="bgr")
+            vis_img = from_tensor(visible_img[i])
+            red_img = from_tensor(infrared_img[i])
 
             sample_mask = batch_idx == i
             sample_boxes = boxes[sample_mask]

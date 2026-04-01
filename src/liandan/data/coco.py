@@ -24,6 +24,7 @@ class CocoDetection(torch.utils.data.Dataset):
         root: str | Path,
         split: Literal["train", "valid"],
         transform: Callable | None = None,
+        color_fmt: Literal["rgb", "bgr"] = "rgb",
     ) -> None:
         """根據`split`載入不同部分的 COCO 物件檢測資料集。
 
@@ -43,7 +44,8 @@ class CocoDetection(torch.utils.data.Dataset):
             root (str | Path): 資料集的根目錄。
             split (str): 選擇載入哪一部分的資料集，必需是`"train"`或`"valid"`。
             transform (Callable, optional): 資料轉換函數，預設值為`None`。
-        """
+            color_fmt (str, optional): 影像色彩格式，必需是`"rgb"`或`"bgr"`，預設值為`"rgb"`。
+        """  # noqa: E501
         self.root = Path(root).expanduser()
         if not self.root.exists():
             raise FileNotFoundError(f"'{self.root}' does not exist.")
@@ -63,6 +65,9 @@ class CocoDetection(torch.utils.data.Dataset):
         self._load_annotation(ann_path)
 
         self.transform = transform
+        self.imread_flag = (
+            cv2.IMREAD_COLOR_RGB if color_fmt.lower() == "rgb" else cv2.IMREAD_COLOR
+        )
 
     def _load_annotation(self, ann_path: Path):
         with ann_path.open("r") as f:
@@ -113,7 +118,7 @@ class CocoDetection(torch.utils.data.Dataset):
 
     def __getitem__(self, index: int) -> dict[str, Any]:
         img_path = self.image_dir / self.image_filenames[index]
-        image = cv2.imread(str(img_path))
+        image = cv2.imread(str(img_path), self.imread_flag)
         assert image is not None, f"Failed to load image '{img_path}'."
 
         head = self.labels_offset[index]
@@ -191,7 +196,7 @@ if __name__ == "__main__":
             label_fields=["classes"],
         ),
     )
-    ds = CocoDetection("./datasets/coco", split="train", transform=t)
+    ds = CocoDetection("./datasets/coco", split="valid", transform=t)
     dl = DataLoader(ds, batch_size=4, collate_fn=CocoDetection.collate_fn)
 
     # Visualizes each batch in a 2x2 grid. Press ESC or q to exit.
@@ -208,7 +213,7 @@ if __name__ == "__main__":
         canvas = np.zeros((grid_h * img_h, grid_w * img_w, 3), dtype=np.uint8)
 
         for i in range(batch_size):
-            img = from_tensor(images[i], color_fmt="bgr")
+            img = from_tensor(images[i])
 
             sample_mask = batch_idx == i
             sample_boxes = boxes[sample_mask]
