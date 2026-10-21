@@ -8,14 +8,24 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "albumentationsx>=2.0.20",
-    "lightning>=2.6.1",
-    "opencv-python>=4.12.0.88",
-    "pandas>=2.3.2",
+    "albumentationsx>=2.5.1",
+    "lightning>=2.6.6",
+    "opencv-python>=5.0.0.93",
+    "pandas>=3.0.6",
     "pycocotools>=2.0.11",
-    "requests>=2.32.5",
-    "torch>=2.10.0",
-    "torchvision>=0.25.0",
+    "requests>=2.34.2",
+    "torch>=2.11.0",
+    "torchvision>=0.26.0",
+]
+
+[project.optional-dependencies]
+cu128 = [
+    "torch>=2.11.0",
+    "torchvision>=0.26.0",
+]
+cu130 = [
+    "torch>=2.14.1",
+    "torchvision>=0.29.1",
 ]
 
 [project.scripts]
@@ -25,21 +35,58 @@ liandan-train = "liandan.train:main"
 requires = ["uv_build>=0.8.22,<0.9.0"]
 build-backend = "uv_build"
 
+[tool.uv]
+# `uv sync` 預設安裝 CPU 版本的 torch；要安裝 GPU 版本時請用 `uv sync --extra cu130` (或 `cu128`)。
+conflicts = [
+    [
+        { extra = "cu128" },
+        { extra = "cu130" },
+    ],
+    [
+        { group = "torch-cpu" },
+        { extra = "cu128" },
+    ],
+    [
+        { group = "torch-cpu" },
+        { extra = "cu130" },
+    ],
+]
+
 [tool.uv.sources]
 torch = [
-    { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { index = "pytorch-cpu", group = "torch-cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { index = "pytorch-cu128", extra = "cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { index = "pytorch-cu130", extra = "cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 torchvision = [
-    { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { index = "pytorch-cpu", group = "torch-cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { index = "pytorch-cu128", extra = "cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { index = "pytorch-cu130", extra = "cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [[tool.uv.index]]
 name = "pytorch-cu128"
 url = "https://download.pytorch.org/whl/cu128"
 explicit = true
 
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
 [dependency-groups]
 dev = [
-    "pytest>=8.4.2",
-    "rich>=14.3.2",
+    "pytest>=9.1.1",
+    "rich>=15.0.0",
+]
+# 這個群組不需要啟用：它的 CPU index source 會讓 uv 在未選 GPU extra 時把 torch 解析成 CPU 版本。
+# 請勿刪除，否則 Linux 上的 `uv sync` 會改從 PyPI 安裝 CUDA 版本的 torch。
+torch-cpu = [
+    "torch>=2.14.1",
+    "torchvision>=0.29.1",
 ]
